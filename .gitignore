@@ -1,0 +1,6 @@
+.DS_Store
+*.pyc
+bin
+include
+lib
+photos
