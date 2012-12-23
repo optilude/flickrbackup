@@ -16,104 +16,52 @@ import ConfigParser
 import argparse
 import flickrapi
 
-from getpass import getpass
+flickr_api_key = "39b564af2057a7d014875e4939a292db"
+flickr_api_secret = "32cb192e3b9c43e6"
 
-CONFIG_FILENAME = "config.ini"
-CONFIG_SECTION = "settings"
+METADATA_EXTENSION = 'txt'
 
-flickrAPI = None
-configParser = None
-
-threaded = False
+threaded = True
 dirlock = RLock()
 
-
-#
-# Management of settings
-#
+flickr_api_key = "39b564af2057a7d014875e4939a292db"
+flickr_api_secret = "32cb192e3b9c43e6"
 
 
-def clear_input_retriever(setting):
-    return raw_input(setting.name + ":")
+def retrieve_flickr_token(username):
+    flickr_api = flickrapi.FlickrAPI(flickr_api_key, secret=flickr_api_secret, username=username)
 
-
-def passwd_input_retriever(setting):
-    return getpass(setting.name + ':')
-
-
-def config_retriever(setting):
-    global configParser
-    if configParser is None:
-        configParser = ConfigParser.SafeConfigParser()
-        configParser.read(CONFIG_FILENAME)
-    return configParser.get(CONFIG_SECTION, setting.name)
-
-
-class Setting(object):
-
-    def __init__(self, name, default=None, input_retriever=clear_input_retriever, empty_value=None):
-        self.name = name
-        self._value = default
-        self.input_retriever = input_retriever
-        self.empty_value = empty_value
-
-    @property
-    def value(self):
-        while self._value == self.empty_value:
-            self._value = self.input_retriever(self)
-
-        return self._value
-
-#
-# Settings
-#
-
-flickr_api_key = Setting('api-key', input_retriever=config_retriever)
-flickr_api_secret = Setting('api-secret', input_retriever=config_retriever)
-
-flickr_usernsid = None
-
-
-def flickr_token_retriever(setting):
-    global flickrAPI
-    global flickr_usernsid
-
-    if flickrAPI is None:
-        flickrAPI = flickrapi.FlickrAPI(flickr_api_key.value, flickr_api_secret.value)
-
-    (token, frob) = flickrAPI.get_token_part_one(perms='write')
+    (token, frob) = flickr_api.get_token_part_one(perms='write')
 
     if not token:
         raw_input("Press ENTER after you authorized this program")
 
-    flickrAPI.get_token_part_two((token, frob))
+    flickr_api.get_token_part_two((token, frob))
 
-    flickr_usernsid = flickrAPI.auth_checkToken(auth_token=token).find('auth').find('user').get('nsid')
+    flickr_usernsid = flickr_api.auth_checkToken(auth_token=token).find('auth').find('user').get('nsid')
 
-    return True
+    return (flickr_api, flickr_usernsid)
 
 #
 # Run
 #
 
 
-def run(destination, min_upload_date, max_upload_date=None, threadpoolsize=7):
+def run(destination, min_date, username=None, threadpoolsize=7):
     if not os.path.exists(destination):
         os.mkdir(destination)
 
     print 'Authenticating with Flickr..'
-    flickr_token = Setting('Flickr Token', input_retriever=flickr_token_retriever)
-
-    flickr_token.value  # force retrieval of authentication information...
+    flickr_api, flickr_usernsid = retrieve_flickr_token(username)
 
     def get_photo_url(info):
         if info.get('media') == 'video':
             return "http://www.flickr.com/photos/%s/%s/play/orig/%s" % (flickr_usernsid, info.get('id'), info.get('originalsecret'))
         else:
-            return "http://farm%s.staticflickr.com/%s/%s_%s_o.%s" % (info.get('farm'), info.get('server'), info.get('id'), info.get('originalsecret'), info.get('originalformat'))
+            return info.get('url_o')
 
     def get_photo_sets(info):
-        return flickrAPI.photos_getAllContexts(photo_id=info.get('id')).findall('set')
+        return flickr_api.photos_getAllContexts(photo_id=info.get('id')).findall('set')
 
     def get_set_directory(set_info):
         dirname = os.path.join(destination, set_info.get('title'))
@@ -122,9 +70,34 @@ def run(destination, min_upload_date, max_upload_date=None, threadpoolsize=7):
                 os.mkdir(dirname)
         return dirname
 
+    def get_date_directory(parent, info):
+        date_taken = info.get('datetaken').split(' ')[0]
+        year, month, day = date_taken.split('-')
+        dirname = os.path.join(parent, year, month, day)
+        with dirlock:
+            if not os.path.exists(dirname):
+                os.makedirs(dirname)
+        return dirname
+
+    def write_metadata(photo_filepath, photo):
+        filename = photo_filepath + "." + METADATA_EXTENSION
+        parser = ConfigParser.SafeConfigParser()
+        parser.add_section("Photo")
+        parser.set("Photo", "id", photo.get('id'))
+        parser.set("Photo", "title", photo.get('title'))
+        parser.set("Photo", "description", photo.find('description').text or "")
+        parser.set("Photo", "public", photo.get('ispublic'))
+        parser.set("Photo", "friends", photo.get('isfriend'))
+        parser.set("Photo", "family", photo.get('isfamily'))
+        parser.set("Photo", "taken", photo.get('datetaken'))
+        parser.set("Photo", "tags", photo.get('tags'))
+
+        with open(filename, 'w') as f:
+            parser.write(f)
+
     threadpool = ThreadPool(threadpoolsize)
 
-    def download_photo(flickr_photo):
+    def download_photo(photo):
         def download_callback(count, blocksize, totalsize):
 
             download_stat_print = set((0.0, .25, .5, 1.0))
@@ -137,56 +110,65 @@ def run(destination, min_upload_date, max_upload_date=None, threadpoolsize=7):
                 if diff >= -(blocksize / 2) and diff <= (blocksize / 2):
                     downloaded_so_far = float(count * blocksize) / 1024.0 / 1024.0
                     total_size_in_mb = float(totalsize) / 1024.0 / 1024.0
-                    print "Photo: %s --- %i%% - %.1f/%.1fmb" % (flickr_photo.get('title'), res, downloaded_so_far, total_size_in_mb)
+                    print "Photo: %s --- %i%% - %.1f/%.1fmb" % (photo.get('title'), res, downloaded_so_far, total_size_in_mb)
 
-        photo_info = flickrAPI.photos_getInfo(photo_id=flickr_photo.get('id')).find('photo')
-        photo_url = get_photo_url(photo_info)
+        photo_url = get_photo_url(photo)
 
         dirname = destination
 
-        if photo_info.get('media') == 'video':
+        if photo.get('media') == 'video':
             # XXX: Doesn't seem to be a way to discover original file extension (?)
-            filename = flickr_photo.get('id') + ".mov"
+            filename = photo.get('id') + ".mov"
         else:
-            filename = flickr_photo.get('id') + "." + photo_info.get('originalformat')
+            filename = photo.get('id') + "." + photo.get('originalformat')
 
         # Create a photo set directory from the first set the photo is a member of
-        photo_sets = get_photo_sets(photo_info)
+        photo_sets = get_photo_sets(photo)
         if len(photo_sets) > 0:
             dirname = get_set_directory(photo_sets[0])
 
-        # TODO: Subdivide by year/month/day
+        dirname = get_date_directory(dirname, photo)
 
         # Download
-        print '* Processing photo "%s" at url "%s".' % (flickr_photo.get('title'), photo_url)
+        print '* Processing photo "%s" at url "%s".' % (photo.get('title'), photo_url)
 
         filepath = os.path.join(dirname, filename)
-        if os.path.exists(filepath):
-            print "%s already exists" % filepath
-        else:
-            (filepath, headers) = urlretrieve(photo_url, filepath, download_callback)
-            print 'Download of %s at %s to %s finished.' % (flickr_photo.get('title'), photo_url, filepath)
+        (filepath, headers) = urlretrieve(photo_url, filepath, download_callback)
+        write_metadata(filepath, photo)
+        print 'Download of %s at %s to %s finished.' % (photo.get('title'), photo_url, filepath)
 
         # Copy to additional set directories
         for photo_set in photo_sets[1:]:
             copy_dirname = get_set_directory(photo_set)
+            copy_dirname = get_date_directory(copy_dirname, photo)
             copy_filepath = os.path.join(copy_dirname, filename)
-            if os.path.exists(copy_filepath):
-                print "%s already exists" % copy_filepath
-            else:
-                shutil.copyfile(filepath, copy_filepath)
-                print "Photo %s also copied to %s" % (flickr_photo.get('title'), copy_filepath,)
 
-        # TODO: Write photo metadata (title, description, permissions, taken date, tags)
+            shutil.copyfile(filepath, copy_filepath)
+            shutil.copyfile(filepath + "." + METADATA_EXTENSION, copy_filepath + "." + METADATA_EXTENSION)
+            print "Photo %s also copied to %s" % (photo.get('title'), copy_filepath,)
 
-    # XXX: Use recentlyUpdated instead. Need to implement pagination. Can do away with getInfo() since we can ask for required parameters
-    for photo in flickrAPI.walk(user_id="me", min_upload_date=min_upload_date, max_upload_date=max_upload_date, sort="date-posted-asc"):
+    page = 1
+    has_more_pages = True
 
-        if threaded:
-            req = WorkRequest(download_photo, [photo], {})
-            threadpool.putRequest(req)
+    while has_more_pages:
+        recently_updated = flickr_api.photos_recentlyUpdated(
+            min_date=min_date,
+            extras="description,url_o,media,original_format,date_upload,date_taken,tags,machine_tags",
+            per_page=500,
+            page=page
+        ).find('photos')
+
+        if page >= int(recently_updated.get('pages')):
+            has_more_pages = False
         else:
-            download_photo(photo)
+            page += 1
+
+        for photo in recently_updated.findall('photo'):
+            if threaded:
+                req = WorkRequest(download_photo, [photo], {})
+                threadpool.putRequest(req)
+            else:
+                download_photo(photo)
 
     threadpool.wait()
 
@@ -197,17 +179,12 @@ def run(destination, min_upload_date, max_upload_date=None, threadpoolsize=7):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Incremental Flickr backup')
-    parser.add_argument('-c', '--config', help='Configuration file')
-    parser.add_argument('-f', '--from', dest='from_date', help='From date/time')
-    parser.add_argument('-t', '--to', dest='to_date', help='To date/time')
+    parser.add_argument('-u', '--username', help='Start date')
+    parser.add_argument('from_date', help='Start date')
     parser.add_argument('destination', help='Destination directory')
 
     return parser.parse_args()
 
 if __name__ == '__main__':
     arguments = parse_args()
-
-    if arguments.config:
-        CONFIG_FILENAME = arguments.config
-
-    run(arguments.destination, arguments.from_date, arguments.to_date)
+    run(arguments.destination, arguments.from_date, arguments.username)
