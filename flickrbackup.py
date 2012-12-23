@@ -2,6 +2,13 @@
 #
 # requires flickrapi, threadpool
 
+# To do:
+#  - Push to github
+#  - Package as egg
+#  - Store no-set files in a top level directory with a unique name (?)
+#  - Store last updated date in stamp file, make 'from' parameter optional
+#  - Better error handling and reporting
+
 from urllib import urlretrieve
 
 from threadpool import WorkRequest
