@@ -3,51 +3,55 @@
 # requires flickrapi, threadpool
 
 # To do:
-#  - Push to github
-#  - Package as egg
-#  - Store no-set files in a top level directory with a unique name (?)
-#  - Store last updated date in stamp file, make 'from' parameter optional
+#  - Download to temp file and move atomically
 #  - Better error handling and reporting
+#  - Make metadata file unicode safe
+#  - Package as egg
+#  - Readme
 
-from urllib import urlretrieve
-
-from threadpool import WorkRequest
-from threadpool import ThreadPool
-from threading import RLock
+from __future__ import print_function
 
 import os
 import os.path
 import shutil
-
-import ConfigParser
+import datetime
 import argparse
+import urllib
+import ConfigParser
 import flickrapi
+import threadpool
+import threading
+import sys
+import logging
 
-flickr_api_key = "39b564af2057a7d014875e4939a292db"
-flickr_api_secret = "32cb192e3b9c43e6"
+FLICKR_API_KEY = "39b564af2057a7d014875e4939a292db"
+FLICKR_API_SECRET = "32cb192e3b9c43e6"
 
 METADATA_EXTENSION = 'txt'
+STAMP_FILENAME = '.stamp'
 
-threaded = True
-dirlock = RLock()
+THREADED = True  # Turn off for easier debugging
+dirlock = threading.RLock()
 
-flickr_api_key = "39b564af2057a7d014875e4939a292db"
-flickr_api_secret = "32cb192e3b9c43e6"
+VERBOSE = False
 
 
 def retrieve_flickr_token(username):
-    flickr_api = flickrapi.FlickrAPI(flickr_api_key, secret=flickr_api_secret, username=username)
+    flickr_api = flickrapi.FlickrAPI(FLICKR_API_KEY, secret=FLICKR_API_SECRET, username=username)
 
     (token, frob) = flickr_api.get_token_part_one(perms='write')
 
     if not token:
-        raw_input("Press ENTER after you authorized this program")
+        print("You will be asked to authorize this app on Flickr (in a web browser).")
+        raw_input("Press ENTER when you are done")
+        (token, frob) = flickr_api.get_token_part_one(perms='write')
 
     flickr_api.get_token_part_two((token, frob))
 
     flickr_usernsid = flickr_api.auth_checkToken(auth_token=token).find('auth').find('user').get('nsid')
 
     return (flickr_api, flickr_usernsid)
+
 
 #
 # Run
@@ -58,8 +62,11 @@ def run(destination, min_date, username=None, threadpoolsize=7):
     if not os.path.exists(destination):
         os.mkdir(destination)
 
-    print 'Authenticating with Flickr..'
+    if VERBOSE:
+        print('Authenticating with Flickr.')
     flickr_api, flickr_usernsid = retrieve_flickr_token(username)
+    if VERBOSE:
+        print("Done")
 
     def get_photo_url(info):
         if info.get('media') == 'video':
@@ -89,23 +96,29 @@ def run(destination, min_date, username=None, threadpoolsize=7):
     def write_metadata(photo_filepath, photo):
         filename = photo_filepath + "." + METADATA_EXTENSION
         parser = ConfigParser.SafeConfigParser()
-        parser.add_section("Photo")
-        parser.set("Photo", "id", photo.get('id'))
-        parser.set("Photo", "title", photo.get('title'))
-        parser.set("Photo", "description", photo.find('description').text or "")
-        parser.set("Photo", "public", photo.get('ispublic'))
-        parser.set("Photo", "friends", photo.get('isfriend'))
-        parser.set("Photo", "family", photo.get('isfamily'))
-        parser.set("Photo", "taken", photo.get('datetaken'))
-        parser.set("Photo", "tags", photo.get('tags'))
+
+        # TODO: Unicode safety
+
+        parser.add_section("Information")
+        parser.set("Information", "id", photo.get('id'))
+        parser.set("Information", "title", photo.get('title'))
+        parser.set("Information", "description", photo.find('description').text or "")
+        parser.set("Information", "public", photo.get('ispublic'))
+        parser.set("Information", "friends", photo.get('isfriend'))
+        parser.set("Information", "family", photo.get('isfamily'))
+        parser.set("Information", "taken", photo.get('datetaken'))
+        parser.set("Information", "tags", photo.get('tags'))
 
         with open(filename, 'w') as f:
             parser.write(f)
 
-    threadpool = ThreadPool(threadpoolsize)
+    thread_pool = threadpool.ThreadPool(threadpoolsize)
 
     def download_photo(photo):
+
         def download_callback(count, blocksize, totalsize):
+            if not VERBOSE:
+                return
 
             download_stat_print = set((0.0, .25, .5, 1.0))
             downloaded = float(count * blocksize)
@@ -117,14 +130,14 @@ def run(destination, min_date, username=None, threadpoolsize=7):
                 if diff >= -(blocksize / 2) and diff <= (blocksize / 2):
                     downloaded_so_far = float(count * blocksize) / 1024.0 / 1024.0
                     total_size_in_mb = float(totalsize) / 1024.0 / 1024.0
-                    print "Photo: %s --- %i%% - %.1f/%.1fmb" % (photo.get('title'), res, downloaded_so_far, total_size_in_mb)
+                    print("Photo: %s --- %i%% - %.1f/%.1fmb" % (photo.get('title'), res, downloaded_so_far, total_size_in_mb))
 
         photo_url = get_photo_url(photo)
 
         dirname = destination
 
         if photo.get('media') == 'video':
-            # XXX: Doesn't seem to be a way to discover original file extension (?)
+            # XXX: There doesn't seem to be a way to discover original file extension (?)
             filename = photo.get('id') + ".mov"
         else:
             filename = photo.get('id') + "." + photo.get('originalformat')
@@ -137,12 +150,14 @@ def run(destination, min_date, username=None, threadpoolsize=7):
         dirname = get_date_directory(dirname, photo)
 
         # Download
-        print '* Processing photo "%s" at url "%s".' % (photo.get('title'), photo_url)
+        if VERBOSE:
+            print('Processing photo "%s" at url "%s".' % (photo.get('title'), photo_url))
 
         filepath = os.path.join(dirname, filename)
-        (filepath, headers) = urlretrieve(photo_url, filepath, download_callback)
+        (filepath, headers) = urllib.urlretrieve(photo_url, filepath, download_callback)
         write_metadata(filepath, photo)
-        print 'Download of %s at %s to %s finished.' % (photo.get('title'), photo_url, filepath)
+        if VERBOSE:
+            print('Download of "%s" at %s to %s finished.' % (photo.get('title'), photo_url, filepath))
 
         # Copy to additional set directories
         for photo_set in photo_sets[1:]:
@@ -152,7 +167,11 @@ def run(destination, min_date, username=None, threadpoolsize=7):
 
             shutil.copyfile(filepath, copy_filepath)
             shutil.copyfile(filepath + "." + METADATA_EXTENSION, copy_filepath + "." + METADATA_EXTENSION)
-            print "Photo %s also copied to %s" % (photo.get('title'), copy_filepath,)
+            if VERBOSE:
+                print('Photo "%s" also copied to %s' % (photo.get('title'), copy_filepath,))
+
+        if not VERBOSE:
+            print(".")
 
     page = 1
     has_more_pages = True
@@ -171,13 +190,13 @@ def run(destination, min_date, username=None, threadpoolsize=7):
             page += 1
 
         for photo in recently_updated.findall('photo'):
-            if threaded:
-                req = WorkRequest(download_photo, [photo], {})
-                threadpool.putRequest(req)
+            if THREADED:
+                req = threadpool.WorkRequest(download_photo, [photo], {})
+                thread_pool.putRequest(req)
             else:
                 download_photo(photo)
 
-    threadpool.wait()
+    thread_pool.wait()
 
 #
 # CLI
@@ -187,11 +206,33 @@ def run(destination, min_date, username=None, threadpoolsize=7):
 def parse_args():
     parser = argparse.ArgumentParser(description='Incremental Flickr backup')
     parser.add_argument('-u', '--username', help='Start date')
-    parser.add_argument('from_date', help='Start date')
+    parser.add_argument('-f', '--from', dest='from_date', help='Start date (YYYY-MM-DD)')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Log progress information')
     parser.add_argument('destination', help='Destination directory')
 
     return parser.parse_args()
 
 if __name__ == '__main__':
     arguments = parse_args()
-    run(arguments.destination, arguments.from_date, arguments.username)
+
+    destination = arguments.destination
+    from_date = arguments.from_date
+    VERBOSE = arguments.verbose
+
+    # Figure out the start date
+    stamp_filename = os.path.join(destination, STAMP_FILENAME)
+    if not from_date:
+        if os.path.exists(stamp_filename):
+            with open(stamp_filename, 'r') as stamp:
+                from_date = stamp.read().strip()
+    if not from_date:
+        logging.error("No start date specified and no previous time stamp found in %s." % stamp_filename)
+        sys.exit(1)
+
+    # Run the backup
+    print("Running backup of images updated since %s" % from_date)
+    run(destination, from_date, arguments.username)
+
+    # Store today's date
+    with open(stamp_filename, 'w') as stamp:
+        stamp.write(datetime.date.today().isoformat())
