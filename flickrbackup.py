@@ -1,13 +1,11 @@
 #! /usr/bin/python
 #
 # requires flickrapi, threadpool
+# Baesd on http://nathanvangheem.com/scripts/migrateflickrtopicasanokeyresize.py
 
 # To do:
-#  - Download to temp file and move atomically
 #  - Better error handling and reporting
-#  - Make metadata file unicode safe
 #  - Package as egg
-#  - Readme
 
 from __future__ import print_function
 
@@ -17,12 +15,12 @@ import shutil
 import datetime
 import argparse
 import urllib
-import ConfigParser
 import flickrapi
 import threadpool
 import threading
 import sys
 import logging
+import tempfile
 
 FLICKR_API_KEY = "39b564af2057a7d014875e4939a292db"
 FLICKR_API_SECRET = "32cb192e3b9c43e6"
@@ -95,22 +93,16 @@ def run(destination, min_date, username=None, threadpoolsize=7):
 
     def write_metadata(photo_filepath, photo):
         filename = photo_filepath + "." + METADATA_EXTENSION
-        parser = ConfigParser.SafeConfigParser()
-
-        # TODO: Unicode safety
-
-        parser.add_section("Information")
-        parser.set("Information", "id", photo.get('id'))
-        parser.set("Information", "title", photo.get('title'))
-        parser.set("Information", "description", photo.find('description').text or "")
-        parser.set("Information", "public", photo.get('ispublic'))
-        parser.set("Information", "friends", photo.get('isfriend'))
-        parser.set("Information", "family", photo.get('isfamily'))
-        parser.set("Information", "taken", photo.get('datetaken'))
-        parser.set("Information", "tags", photo.get('tags'))
-
         with open(filename, 'w') as f:
-            parser.write(f)
+            f.write("[Information]\n")
+            f.write((u"id = %s\n" % photo.get('id')).encode('utf-8'))
+            f.write((u"title = %s\n" % photo.get('title')).encode('utf-8'))
+            f.write((u"description = %s\n" % (photo.find('description').text or "")).encode('utf-8'))
+            f.write((u"public = %s\n" % ("yes" if photo.get('ispublic') == "1" else "no")).encode('utf-8'))
+            f.write((u"friends = %s\n" % ("yes" if photo.get('isfriend') == "1" else "no")).encode('utf-8'))
+            f.write((u"family = %s\n" % ("yes" if photo.get('isfamily') == "1" else "no")).encode('utf-8'))
+            f.write((u"taken = %s\n" % photo.get('datetaken')).encode('utf-8'))
+            f.write((u"tags = %s\n" % photo.get('tags')).encode('utf-8'))
 
     thread_pool = threadpool.ThreadPool(threadpoolsize)
 
@@ -154,7 +146,12 @@ def run(destination, min_date, username=None, threadpoolsize=7):
             print('Processing photo "%s" at url "%s".' % (photo.get('title'), photo_url))
 
         filepath = os.path.join(dirname, filename)
-        (filepath, headers) = urllib.urlretrieve(photo_url, filepath, download_callback)
+
+        tmp_fd, tmp_filename = tempfile.mkstemp()
+        tmp_filename, headers = urllib.urlretrieve(photo_url, tmp_filename, download_callback)
+        shutil.move(tmp_filename, filepath)
+        os.close(tmp_fd)
+
         write_metadata(filepath, photo)
         if VERBOSE:
             print('Download of "%s" at %s to %s finished.' % (photo.get('title'), photo_url, filepath))
