@@ -14,7 +14,7 @@ setup(
     author="Martin Aspeli",
     author_email="optilude@gmail.com",
     description="Flickr backup utility",
-    long_description=open('README.md').read(),
+    long_description=open('README.txt').read(),
     license="BSD",
     keywords="flickr backup",
     url="http://github.com/optilude/flickrbackup",

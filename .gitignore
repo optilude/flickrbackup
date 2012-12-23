@@ -5,3 +5,4 @@ include
 lib
 photos
 *.egg-info
+dist

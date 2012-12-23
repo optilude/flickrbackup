@@ -1,28 +1,31 @@
-# Flickr backup
+Flickr backup
+=============
 
 A tool to incrementally backup your photos from Flickr.
 
-## Installation
+Installation
+-------------
 
 1. Install Python 2.7 (http://python.org) if you don't have it already:
 
-2. Install pip:
+2. Install pip::
 
     $ wget http://python-distribute.org/distribute_setup.py
     $ python2.7 distribute_setup.py
     $ easy_install pip
 
-3. Install package from PyPI:
+3. Install package from PyPI::
 
     $ pip install flickrbackup
 
-## Usage
+Usage
+-----
 
 Note: You must have a Flickr Pro account to use this tool, since Flickr only
 allows access to original-scale images for Pro members.
 
 The first time you run flickrbackup, you should specify a start date, using the
-format YYYY-MM-DD:
+format YYYY-MM-DD::
 
     $ flickrbackup -u bob -f 2012-02-28 -v photos
 
@@ -43,13 +46,13 @@ of the image.
 After the first successful run, a special file named ".stamp" will be placed in
 the download directory, containing the date of the last backup. This allows
 flickrbackup to be run again without the "-f" argument, for example in a
-scheduled nightly "cron" job:
+scheduled nightly "cron" job::
 
     flickrbackup -u bob /path/to/photos
 
 Here, we have also omitted the "-v" (verbose) flag, which means only errors and
 important messages are output to the console.
 
-To see further help, run:
+To see further help, run::
 
     $ flickrbackup --help
