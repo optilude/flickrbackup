@@ -4,7 +4,6 @@
 # Baesd on http://nathanvangheem.com/scripts/migrateflickrtopicasanokeyresize.py
 
 # To do:
-#  - Better error handling and reporting
 #  - Package as egg
 
 from __future__ import print_function
@@ -108,67 +107,72 @@ def run(destination, min_date, username=None, threadpoolsize=7):
 
     def download_photo(photo):
 
-        def download_callback(count, blocksize, totalsize):
-            if not VERBOSE:
-                return
+        try:
 
-            download_stat_print = set((0.0, .25, .5, 1.0))
-            downloaded = float(count * blocksize)
-            res = int((downloaded / totalsize) * 100.0)
+            def download_callback(count, blocksize, totalsize):
+                if not VERBOSE:
+                    return
 
-            for st in download_stat_print:
-                dl = totalsize * st
-                diff = downloaded - dl
-                if diff >= -(blocksize / 2) and diff <= (blocksize / 2):
-                    downloaded_so_far = float(count * blocksize) / 1024.0 / 1024.0
-                    total_size_in_mb = float(totalsize) / 1024.0 / 1024.0
-                    print("Photo: %s --- %i%% - %.1f/%.1fmb" % (photo.get('title'), res, downloaded_so_far, total_size_in_mb))
+                download_stat_print = set((0.0, .25, .5, 1.0))
+                downloaded = float(count * blocksize)
+                res = int((downloaded / totalsize) * 100.0)
 
-        photo_url = get_photo_url(photo)
+                for st in download_stat_print:
+                    dl = totalsize * st
+                    diff = downloaded - dl
+                    if diff >= -(blocksize / 2) and diff <= (blocksize / 2):
+                        downloaded_so_far = float(count * blocksize) / 1024.0 / 1024.0
+                        total_size_in_mb = float(totalsize) / 1024.0 / 1024.0
+                        print("Photo: %s --- %i%% - %.1f/%.1fmb" % (photo.get('title'), res, downloaded_so_far, total_size_in_mb))
 
-        dirname = destination
+            photo_url = get_photo_url(photo)
 
-        if photo.get('media') == 'video':
-            # XXX: There doesn't seem to be a way to discover original file extension (?)
-            filename = photo.get('id') + ".mov"
-        else:
-            filename = photo.get('id') + "." + photo.get('originalformat')
+            dirname = destination
 
-        # Create a photo set directory from the first set the photo is a member of
-        photo_sets = get_photo_sets(photo)
-        if len(photo_sets) > 0:
-            dirname = get_set_directory(photo_sets[0])
+            if photo.get('media') == 'video':
+                # XXX: There doesn't seem to be a way to discover original file extension (?)
+                filename = photo.get('id') + ".mov"
+            else:
+                filename = photo.get('id') + "." + photo.get('originalformat')
 
-        dirname = get_date_directory(dirname, photo)
+            # Create a photo set directory from the first set the photo is a member of
+            photo_sets = get_photo_sets(photo)
+            if len(photo_sets) > 0:
+                dirname = get_set_directory(photo_sets[0])
 
-        # Download
-        if VERBOSE:
-            print('Processing photo "%s" at url "%s".' % (photo.get('title'), photo_url))
+            dirname = get_date_directory(dirname, photo)
 
-        filepath = os.path.join(dirname, filename)
-
-        tmp_fd, tmp_filename = tempfile.mkstemp()
-        tmp_filename, headers = urllib.urlretrieve(photo_url, tmp_filename, download_callback)
-        shutil.move(tmp_filename, filepath)
-        os.close(tmp_fd)
-
-        write_metadata(filepath, photo)
-        if VERBOSE:
-            print('Download of "%s" at %s to %s finished.' % (photo.get('title'), photo_url, filepath))
-
-        # Copy to additional set directories
-        for photo_set in photo_sets[1:]:
-            copy_dirname = get_set_directory(photo_set)
-            copy_dirname = get_date_directory(copy_dirname, photo)
-            copy_filepath = os.path.join(copy_dirname, filename)
-
-            shutil.copyfile(filepath, copy_filepath)
-            shutil.copyfile(filepath + "." + METADATA_EXTENSION, copy_filepath + "." + METADATA_EXTENSION)
+            # Download
             if VERBOSE:
-                print('Photo "%s" also copied to %s' % (photo.get('title'), copy_filepath,))
+                print('Processing photo "%s" at url "%s".' % (photo.get('title'), photo_url))
 
-        if not VERBOSE:
-            print(".")
+            filepath = os.path.join(dirname, filename)
+
+            tmp_fd, tmp_filename = tempfile.mkstemp()
+            tmp_filename, headers = urllib.urlretrieve(photo_url, tmp_filename, download_callback)
+            shutil.move(tmp_filename, filepath)
+            os.close(tmp_fd)
+
+            write_metadata(filepath, photo)
+            if VERBOSE:
+                print('Download of "%s" at %s to %s finished.' % (photo.get('title'), photo_url, filepath))
+
+            # Copy to additional set directories
+            for photo_set in photo_sets[1:]:
+                copy_dirname = get_set_directory(photo_set)
+                copy_dirname = get_date_directory(copy_dirname, photo)
+                copy_filepath = os.path.join(copy_dirname, filename)
+
+                shutil.copyfile(filepath, copy_filepath)
+                shutil.copyfile(filepath + "." + METADATA_EXTENSION, copy_filepath + "." + METADATA_EXTENSION)
+                if VERBOSE:
+                    print('Photo "%s" also copied to %s' % (photo.get('title'), copy_filepath,))
+
+            if not VERBOSE:
+                print(".")
+        except Exception:
+            logging.exception("An unexpected error occurred downloading %s (%s)" % (photo.get('title'), photo.get('id'),))
+            raise
 
     page = 1
     has_more_pages = True
