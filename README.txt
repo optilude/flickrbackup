@@ -27,21 +27,20 @@ allows access to original-scale images for Pro members.
 The first time you run flickrbackup, you should specify a start date, using the
 format YYYY-MM-DD::
 
-    $ flickrbackup -u bob -f 2012-02-28 -v photos
+    $ flickrbackup -f 2012-02-28 -v photos
 
 This will launch a web browser and ask you to authorize flickrbackup with your
 Flickr account, if you haven't already. You may need to restart the script
 after this step.
 
-Once authorised, flickrbackup will download all photos and videos for the user
-specified ("bob" in this case) that have been created or updated on or after the
-"from" date (February 28th, 2012 in this case) into the directory specified
-("photos" in this case). Items are organised into subfolders by set and the
-year, month and day they were taken. If an item appears in multiple sets, it
-will be copied into both set directories. Metadata such as the title,
-description, tags and other information will be placed in a file with a ".txt"
-extension next to the image file. The image file name is based on the Flickr id
-of the image.
+Once authorised, flickrbackup will download all photos and videos for the
+authorised account that have been created or updated on or after the "from" date
+(February 28th, 2012 in this case) into the directory specified ("photos" in
+this case). Items are organised into subfolders by set and the year, month and
+day they were taken. If an item appears in multiple sets, it will be copied into
+both set directories. Metadata such as the title, description, tags and other
+information will be placed in a file with a ".txt" extension next to the image
+file. The image file name is based on the Flickr id of the image.
 
 After the first successful run, a special file named ".stamp" will be placed in
 the download directory, containing the date of the last backup. This allows

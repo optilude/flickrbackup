@@ -3,9 +3,6 @@
 # requires flickrapi, threadpool
 # Baesd on http://nathanvangheem.com/scripts/migrateflickrtopicasanokeyresize.py
 
-# To do:
-#  - Package as egg
-
 from __future__ import print_function
 
 import os
@@ -33,16 +30,12 @@ dirlock = threading.RLock()
 VERBOSE = False
 
 
-def retrieve_flickr_token(username):
-    flickr_api = flickrapi.FlickrAPI(FLICKR_API_KEY, secret=FLICKR_API_SECRET, username=username)
+def retrieve_flickr_token():
+    flickr_api = flickrapi.FlickrAPI(FLICKR_API_KEY, secret=FLICKR_API_SECRET)
 
     (token, frob) = flickr_api.get_token_part_one(perms='write')
-
     if not token:
-        print("You will be asked to authorize this app on Flickr (in a web browser).")
-        raw_input("Press ENTER when you are done")
-        (token, frob) = flickr_api.get_token_part_one(perms='write')
-
+        raw_input("Press ENTER after you authorized this program")
     flickr_api.get_token_part_two((token, frob))
 
     flickr_usernsid = flickr_api.auth_checkToken(auth_token=token).find('auth').find('user').get('nsid')
@@ -55,13 +48,13 @@ def retrieve_flickr_token(username):
 #
 
 
-def run(destination, min_date, username=None, threadpoolsize=7):
+def run(destination, min_date, threadpoolsize=7):
     if not os.path.exists(destination):
         os.mkdir(destination)
 
     if VERBOSE:
         print('Authenticating with Flickr.')
-    flickr_api, flickr_usernsid = retrieve_flickr_token(username)
+    flickr_api, flickr_usernsid = retrieve_flickr_token()
     if VERBOSE:
         print("Done")
 
@@ -206,7 +199,6 @@ def run(destination, min_date, username=None, threadpoolsize=7):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Incremental Flickr backup')
-    parser.add_argument('-u', '--username', help='Start date')
     parser.add_argument('-f', '--from', dest='from_date', help='Start date (YYYY-MM-DD)')
     parser.add_argument('-v', '--verbose', action='store_true', help='Log progress information')
     parser.add_argument('destination', help='Destination directory')
@@ -232,7 +224,7 @@ if __name__ == '__main__':
 
     # Run the backup
     print("Running backup of images updated since %s" % from_date)
-    run(destination, from_date, arguments.username)
+    run(destination, from_date)
 
     # Store today's date
     with open(stamp_filename, 'w') as stamp:
