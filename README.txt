@@ -55,3 +55,6 @@ important messages are output to the console.
 To see further help, run::
 
     $ flickrbackup --help
+
+Changelog
+---------

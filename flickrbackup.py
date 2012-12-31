@@ -27,8 +27,6 @@ STAMP_FILENAME = '.stamp'
 THREADED = True  # Turn off for easier debugging
 dirlock = threading.RLock()
 
-VERBOSE = False
-
 
 def retrieve_flickr_token():
     flickr_api = flickrapi.FlickrAPI(FLICKR_API_KEY, secret=FLICKR_API_SECRET)
@@ -48,14 +46,14 @@ def retrieve_flickr_token():
 #
 
 
-def run(destination, min_date, threadpoolsize=7):
+def run(destination, min_date, store_once=False, keep_existing=False, verbose=False, threadpoolsize=7):
     if not os.path.exists(destination):
         os.mkdir(destination)
 
-    if VERBOSE:
+    if verbose:
         print('Authenticating with Flickr.')
     flickr_api, flickr_usernsid = retrieve_flickr_token()
-    if VERBOSE:
+    if verbose:
         print("Done")
 
     def get_photo_url(info):
@@ -103,7 +101,7 @@ def run(destination, min_date, threadpoolsize=7):
         try:
 
             def download_callback(count, blocksize, totalsize):
-                if not VERBOSE:
+                if not verbose:
                     return
 
                 download_stat_print = set((0.0, .25, .5, 1.0))
@@ -136,32 +134,41 @@ def run(destination, min_date, threadpoolsize=7):
             dirname = get_date_directory(dirname, photo)
 
             # Download
-            if VERBOSE:
+            if verbose:
                 print('Processing photo "%s" at url "%s".' % (photo.get('title'), photo_url))
 
             filepath = os.path.join(dirname, filename)
 
-            tmp_fd, tmp_filename = tempfile.mkstemp()
-            tmp_filename, headers = urllib.urlretrieve(photo_url, tmp_filename, download_callback)
-            shutil.move(tmp_filename, filepath)
-            os.close(tmp_fd)
+            if keep_existing and os.path.exists(filepath):
+                if verbose:
+                    print('Image "%s" at %s already exists.' % (photo.get('title'), filepath))
+            else:
+                tmp_fd, tmp_filename = tempfile.mkstemp()
+                tmp_filename, headers = urllib.urlretrieve(photo_url, tmp_filename, download_callback)
+                shutil.move(tmp_filename, filepath)
+                os.close(tmp_fd)
 
-            write_metadata(filepath, photo)
-            if VERBOSE:
-                print('Download of "%s" at %s to %s finished.' % (photo.get('title'), photo_url, filepath))
+                write_metadata(filepath, photo)
+                if verbose:
+                    print('Download of "%s" at %s to %s finished.' % (photo.get('title'), photo_url, filepath))
 
             # Copy to additional set directories
-            for photo_set in photo_sets[1:]:
-                copy_dirname = get_set_directory(photo_set)
-                copy_dirname = get_date_directory(copy_dirname, photo)
-                copy_filepath = os.path.join(copy_dirname, filename)
+            if not store_once:
+                for photo_set in photo_sets[1:]:
+                    copy_dirname = get_set_directory(photo_set)
+                    copy_dirname = get_date_directory(copy_dirname, photo)
+                    copy_filepath = os.path.join(copy_dirname, filename)
 
-                shutil.copyfile(filepath, copy_filepath)
-                shutil.copyfile(filepath + "." + METADATA_EXTENSION, copy_filepath + "." + METADATA_EXTENSION)
-                if VERBOSE:
-                    print('Photo "%s" also copied to %s' % (photo.get('title'), copy_filepath,))
+                    if keep_existing and os.path.exists(filepath):
+                        if verbose:
+                            print('Image "%s" at %s already exists.' % (photo.get('title'), filepath))
+                    else:
+                        shutil.copyfile(filepath, copy_filepath)
+                        shutil.copyfile(filepath + "." + METADATA_EXTENSION, copy_filepath + "." + METADATA_EXTENSION)
+                        if verbose:
+                            print('Photo "%s" also copied to %s' % (photo.get('title'), copy_filepath,))
 
-            if not VERBOSE:
+            if not verbose:
                 print(".")
         except Exception:
             logging.exception("An unexpected error occurred downloading %s (%s)" % (photo.get('title'), photo.get('id'),))
@@ -169,6 +176,7 @@ def run(destination, min_date, threadpoolsize=7):
 
     page = 1
     has_more_pages = True
+    total_printed = False
 
     while has_more_pages:
         recently_updated = flickr_api.photos_recentlyUpdated(
@@ -182,6 +190,10 @@ def run(destination, min_date, threadpoolsize=7):
             has_more_pages = False
         else:
             page += 1
+
+        if not total_printed:
+            print("Processing %s photos" % recently_updated.get('total'))
+            total_printed = True
 
         for photo in recently_updated.findall('photo'):
             if THREADED:
@@ -201,6 +213,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Incremental Flickr backup')
     parser.add_argument('-f', '--from', dest='from_date', help='Start date (YYYY-MM-DD)')
     parser.add_argument('-v', '--verbose', action='store_true', help='Log progress information')
+    parser.add_argument('-o', '--store-once', action='store_true', help='Only store photos once, even if they appear in multiple sets')
+    parser.add_argument('-k', '--keep-existing', action='store_true', help='Keep existing photos (default is to replace in case they have changed)')
     parser.add_argument('destination', help='Destination directory')
 
     return parser.parse_args()
@@ -210,7 +224,6 @@ if __name__ == '__main__':
 
     destination = arguments.destination
     from_date = arguments.from_date
-    VERBOSE = arguments.verbose
 
     # Figure out the start date
     stamp_filename = os.path.join(destination, STAMP_FILENAME)
@@ -222,10 +235,13 @@ if __name__ == '__main__':
         logging.error("No start date specified and no previous time stamp found in %s." % stamp_filename)
         sys.exit(1)
 
+    # Capture today's date (the script may run for more than one day)
+    today = datetime.date.today().isoformat()
+
     # Run the backup
     print("Running backup of images updated since %s" % from_date)
-    run(destination, from_date)
+    run(destination, from_date, arguments.store_once, arguments.keep_existing, arguments.verbose)
 
     # Store today's date
     with open(stamp_filename, 'w') as stamp:
-        stamp.write(datetime.date.today().isoformat())
+        stamp.write(today)
