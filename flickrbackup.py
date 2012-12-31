@@ -17,6 +17,7 @@ import threading
 import sys
 import logging
 import tempfile
+import string
 
 FLICKR_API_KEY = "39b564af2057a7d014875e4939a292db"
 FLICKR_API_SECRET = "32cb192e3b9c43e6"
@@ -68,8 +69,12 @@ def run(destination, min_date, store_once=False, keep_existing=False, verbose=Fa
     def get_photo_sets(info):
         return flickr_api.photos_getAllContexts(photo_id=info.get('id')).findall('set')
 
+    def normalize_filename(filename):
+        # Take a rather liberal approach to what's an allowable filename
+        return filename.replace(os.path.sep, '')
+
     def get_set_directory(set_info):
-        dirname = os.path.join(destination, set_info.get('title'))
+        dirname = os.path.join(destination, normalize_filename(set_info.get('title')))
         with dirlock:
             if not os.path.exists(dirname):
                 os.mkdir(dirname)

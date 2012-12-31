@@ -76,6 +76,7 @@ Changelog
 Version 0.5, released 2012-12-31
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+* Allow set names with characters that are not valid directory names
 * Print erroneous items at the end of the run
 
 Version 0.4, released 2012-12-31
