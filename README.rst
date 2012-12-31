@@ -73,6 +73,12 @@ stored in ``~/.flickr`` to the server or NAS device::
 Changelog
 ---------
 
+Version 0.4, released 2012-12-31
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* In non-verbose mode, print photo id instead of just "." for each completed
+  download.
+
 Version 0.3, released 2012-12-31
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

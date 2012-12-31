@@ -169,7 +169,7 @@ def run(destination, min_date, store_once=False, keep_existing=False, verbose=Fa
                             print('Photo "%s" also copied to %s' % (photo.get('title'), copy_filepath,))
 
             if not verbose:
-                print(".")
+                print(photo.get('id'))
         except Exception:
             logging.exception("An unexpected error occurred downloading %s (%s)" % (photo.get('title'), photo.get('id'),))
             raise
