@@ -1,7 +1,7 @@
-Flickr backup
-=============
+Flickr Incremental Backup
+=========================
 
-A tool to incrementally backup your photos from Flickr.
+A tool to incrementally backup your photos from `Flickr <http://flickr.com>`_.
 
 Installation
 -------------
@@ -45,9 +45,9 @@ file. The image file name is based on the Flickr id of the image.
 After the first successful run, a special file named ".stamp" will be placed in
 the download directory, containing the date of the last backup. This allows
 flickrbackup to be run again without the "-f" argument, for example in a
-scheduled nightly "cron" job::
+scheduled nightly "cron" job, picking up from where it left off::
 
-    flickrbackup -u bob /path/to/photos
+    flickrbackup /path/to/photos
 
 Here, we have also omitted the "-v" (verbose) flag, which means only errors and
 important messages are output to the console.
@@ -56,5 +56,25 @@ To see further help, run::
 
     $ flickrbackup --help
 
+Running on a server or NAS device
+---------------------------------
+
+You may find it useful to run flickrbackup on a server or a device such as the
+Netgear ReadyNAS Duo as a nightly scheduled job (e.g. using ``cron``), to back
+up new or changed photos regularly.
+
+In this case, you may find it difficult to authorise the app with Flickr on
+its first run, as this requires a web browser. The solution is to run it once
+on your local machine, and then copy the authorisation token file that is
+stored in ``~/.flickr`` to the server or NAS device::
+
+    $ scp -r ~/.flickr user@server:~/
+
 Changelog
 ---------
+
+Version 0.3, released 2012-12-31
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Added ``--store-once`` and ``--keep-existing`` options
+* Removed ``--username`` option - you must authenticate as the user to use
