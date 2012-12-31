@@ -73,6 +73,11 @@ stored in ``~/.flickr`` to the server or NAS device::
 Changelog
 ---------
 
+Version 0.5, released 2012-12-31
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Print erroneous items at the end of the run
+
 Version 0.4, released 2012-12-31
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

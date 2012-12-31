@@ -47,6 +47,9 @@ def retrieve_flickr_token():
 
 
 def run(destination, min_date, store_once=False, keep_existing=False, verbose=False, threadpoolsize=7):
+
+    items_with_errors = []
+
     if not os.path.exists(destination):
         os.mkdir(destination)
 
@@ -117,14 +120,15 @@ def run(destination, min_date, store_once=False, keep_existing=False, verbose=Fa
                         print("Photo: %s --- %i%% - %.1f/%.1fmb" % (photo.get('title'), res, downloaded_so_far, total_size_in_mb))
 
             photo_url = get_photo_url(photo)
+            photo_id = photo.get('id')
 
             dirname = destination
 
             if photo.get('media') == 'video':
                 # XXX: There doesn't seem to be a way to discover original file extension (?)
-                filename = photo.get('id') + ".mov"
+                filename = photo_id + ".mov"
             else:
-                filename = photo.get('id') + "." + photo.get('originalformat')
+                filename = photo_id + "." + photo.get('originalformat')
 
             # Create a photo set directory from the first set the photo is a member of
             photo_sets = get_photo_sets(photo)
@@ -169,9 +173,10 @@ def run(destination, min_date, store_once=False, keep_existing=False, verbose=Fa
                             print('Photo "%s" also copied to %s' % (photo.get('title'), copy_filepath,))
 
             if not verbose:
-                print(photo.get('id'))
+                print(photo_id)
         except Exception:
-            logging.exception("An unexpected error occurred downloading %s (%s)" % (photo.get('title'), photo.get('id'),))
+            logging.exception("An unexpected error occurred downloading %s (%s)" % (photo.get('title'), photo_id,))
+            items_with_errors.append(photo_id)
             raise
 
     page = 1
@@ -203,6 +208,11 @@ def run(destination, min_date, store_once=False, keep_existing=False, verbose=Fa
                 download_photo(photo)
 
     thread_pool.wait()
+
+    if items_with_errors:
+        print("Download of the following items did not succeed:", file=sys.stderr)
+        for item in items_with_errors:
+            print(item, sys.stderr)
 
 #
 # CLI
