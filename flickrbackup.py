@@ -34,15 +34,18 @@ dirlock = threading.RLock()
 
 class Photo(object):
 
-    def __init__(self, id, originalsecret=None, farm=None, media='photo',
+    def __init__(self, id, original_secret=None, original_format=None,
+        media='photo', farm=None, server=None,
         title=None, description=None, date_taken=None,
         is_public=None, is_friend=None, is_family=None,
-        tags=None, url_o=None,
+        tags=None, url_o=None, flickr_usernsid=None,
     ):
         self.id = id
-        self.originalsecret = originalsecret
-        self.farm = farm
+        self.original_secret = original_secret
+        self.original_format = original_format
         self.media = media
+        self.farm = farm
+        self.server = server
         self.title = title
         self.description = description
         self.date_taken = date_taken
@@ -51,15 +54,54 @@ class Photo(object):
         self.is_family = is_family
         self.tags = tags
         self._url_o = url_o
+        self.flickr_usernsid = flickr_usernsid
 
     @property
     def url(self):
         if self._url_o:
             return self._url_o
         elif self.media == 'video':
-            return "http://www.flickr.com/photos/%s/%s/play/orig/%s" % (self.flickr_usernsid, photo.get('id'), photo.get('originalsecret'))
+            return "http://www.flickr.com/photos/%s/%s/play/orig/%s" % (self.flickr_usernsid, self.id, self.original_secret)
         else:
-            return photo.get('url_o')
+            return "http://farm%s.staticflickr.com/%s/%s_%s_o.%s" % (self.farm, self.server, self.id, self.original_secret, self.original_format)
+
+    @classmethod
+    def fromInfo(cls, info, flickr_usernsid=None):
+        return Photo(
+                id=info.get('id'),
+                original_secret=info.get('originalsecret'),
+                original_format=info.get('originalformat'),
+                media=info.get('media'),
+                farm=info.get('farm'),
+                server=info.get('server'),
+                title=info.find('title').text,
+                description=info.find('description').text,
+                date_taken=info.find('dates').get('taken'),
+                is_public=info.find('visibility').get('ispublic') == '1',
+                is_friend=info.find('visibility').get('isfriend') == '1',
+                is_family=info.find('visibility').get('isfamily') == '1',
+                tags=[t.text for t in info.find('tags').findall('tag')],
+                flickr_usernsid=flickr_usernsid,
+            )
+
+    @classmethod
+    def fromSearchResult(cls, info, flickr_usernsid=None):
+        return Photo(
+                id=info.get('id'),
+                original_secret=info.get('originalsecret'),
+                original_format=info.get('originalformat'),
+                media=info.get('media'),
+                farm=info.get('farm'),
+                server=info.get('server'),
+                title=info.get('title'),
+                description=info.find('description').text,
+                date_taken=info.get('datetaken'),
+                is_public=info.get('ispublic') == '1',
+                is_friend=info.get('isfriend') == '1',
+                is_family=info.get('isfamily') == '1',
+                tags=info.get('tags').split(' '),
+                flickr_usernsid=flickr_usernsid,
+            )
 
 
 class FlickrBackup(object):
@@ -89,14 +131,8 @@ class FlickrBackup(object):
 
     # Helpers
 
-    def get_photo_url(self, photo):
-        if photo.get('media') == 'video':
-            return "http://www.flickr.com/photos/%s/%s/play/orig/%s" % (self.flickr_usernsid, photo.get('id'), photo.get('originalsecret'))
-        else:
-            return photo.get('url_o')
-
     def get_photo_sets(self, photo):
-        return self.flickr_api.photos_getAllContexts(photo_id=photo.get('id')).findall('set')
+        return self.flickr_api.photos_getAllContexts(photo_id=photo.id).findall('set')
 
     def normalize_filename(self, filename):
         # Take a rather liberal approach to what's an allowable filename
@@ -110,7 +146,7 @@ class FlickrBackup(object):
         return dirname
 
     def get_date_directory(self, parent, photo):
-        date_taken = photo.get('datetaken').split(' ')[0]
+        date_taken = photo.date_taken.split(' ')[0]
         year, month, day = date_taken.split('-')
         dirname = os.path.join(parent, year, month, day)
         with dirlock:
@@ -121,15 +157,15 @@ class FlickrBackup(object):
     def write_metadata(self, photo_filepath, photo):
         filename = photo_filepath + "." + METADATA_EXTENSION
         with open(filename, 'w') as f:
-            f.write("[Information]\n")
-            f.write((u"id = %s\n" % photo.get('id')).encode('utf-8'))
-            f.write((u"title = %s\n" % photo.get('title')).encode('utf-8'))
-            f.write((u"description = %s\n" % (photo.find('description').text or "")).encode('utf-8'))
-            f.write((u"public = %s\n" % ("yes" if photo.get('ispublic') == "1" else "no")).encode('utf-8'))
-            f.write((u"friends = %s\n" % ("yes" if photo.get('isfriend') == "1" else "no")).encode('utf-8'))
-            f.write((u"family = %s\n" % ("yes" if photo.get('isfamily') == "1" else "no")).encode('utf-8'))
-            f.write((u"taken = %s\n" % photo.get('datetaken')).encode('utf-8'))
-            f.write((u"tags = %s\n" % photo.get('tags')).encode('utf-8'))
+            print("[Information]", file=f)
+            print((u"id = %s" % photo.id).encode('utf-8'), file=f)
+            print((u"title = %s" % photo.title).encode('utf-8'), file=f)
+            print((u"description = %s" % (photo.description or "")).encode('utf-8'), file=f)
+            print((u"public = %s" % ("yes" if photo.is_public else "no")).encode('utf-8'), file=f)
+            print((u"friends = %s" % ("yes" if photo.is_friend else "no")).encode('utf-8'), file=f)
+            print((u"family = %s" % ("yes" if photo.is_family else "no")).encode('utf-8'), file=f)
+            print((u"taken = %s" % photo.date_taken).encode('utf-8'), file=f)
+            print((u"tags = %s" % ' '.join(photo.tags)).encode('utf-8'), file=f)
 
     def download_photo(self, photo):
 
@@ -147,18 +183,15 @@ class FlickrBackup(object):
                 if diff >= -(blocksize / 2) and diff <= (blocksize / 2):
                     downloaded_so_far = float(count * blocksize) / 1024.0 / 1024.0
                     total_size_in_mb = float(totalsize) / 1024.0 / 1024.0
-                    print("Photo: %s --- %i%% - %.1f/%.1fmb" % (photo.get('title'), res, downloaded_so_far, total_size_in_mb))
-
-        photo_url = self.get_photo_url(photo)
-        photo_id = photo.get('id')
+                    print("Photo: %s --- %i%% - %.1f/%.1fmb" % (photo.title, res, downloaded_so_far, total_size_in_mb))
 
         dirname = self.destination
 
-        if photo.get('media') == 'video':
+        if photo.media == 'video':
             # XXX: There doesn't seem to be a way to discover original file extension (?)
-            filename = photo_id + ".mov"
+            filename = photo.id + ".mov"
         else:
-            filename = photo_id + "." + photo.get('originalformat')
+            filename = photo.id + "." + photo.original_format
 
         # Create a photo set directory from the first set the photo is a member of
         photo_sets = self.get_photo_sets(photo)
@@ -169,22 +202,22 @@ class FlickrBackup(object):
 
         # Download
         if self.verbose:
-            print('Processing photo "%s" at url "%s".' % (photo.get('title'), photo_url))
+            print('Processing photo "%s" at url "%s".' % (photo.title, photo.url))
 
         filepath = os.path.join(dirname, filename)
 
         if self.keep_existing and os.path.exists(filepath):
             if self.verbose:
-                print('Image "%s" at %s already exists.' % (photo.get('title'), filepath))
+                print('Image "%s" at %s already exists.' % (photo.title, filepath))
         else:
             tmp_fd, tmp_filename = tempfile.mkstemp()
-            tmp_filename, headers = urllib.urlretrieve(photo_url, tmp_filename, download_callback)
+            tmp_filename, headers = urllib.urlretrieve(photo.url, tmp_filename, download_callback)
             shutil.move(tmp_filename, filepath)
             os.close(tmp_fd)
 
             self.write_metadata(filepath, photo)
             if self.verbose:
-                print('Download of "%s" at %s to %s finished.' % (photo.get('title'), photo_url, filepath))
+                print('Download of "%s" at %s to %s finished.' % (photo.title, photo.url, filepath))
 
         # Copy to additional set directories
         if not self.store_once:
@@ -195,15 +228,15 @@ class FlickrBackup(object):
 
                 if self.keep_existing and os.path.exists(filepath):
                     if self.verbose:
-                        print('Image "%s" at %s already exists.' % (photo.get('title'), filepath))
+                        print('Image "%s" at %s already exists.' % (photo.title, filepath))
                 else:
                     shutil.copyfile(filepath, copy_filepath)
                     shutil.copyfile(filepath + "." + METADATA_EXTENSION, copy_filepath + "." + METADATA_EXTENSION)
                     if self.verbose:
-                        print('Photo "%s" also copied to %s' % (photo.get('title'), copy_filepath,))
+                        print('Photo "%s" also copied to %s' % (photo.title, copy_filepath,))
 
         if not self.verbose:
-            print(photo_id)
+            print(photo.id)
 
         return True
 
@@ -223,7 +256,7 @@ class FlickrBackup(object):
             try:
                 self.download_photo(photo)
             except Exception:
-                logging.exception("An unexpected error occurred downloading %s (%s)" % (photo.get('title'), photo.get('id'),))
+                logging.exception("An unexpected error occurred downloading %s (%s)" % (photo.title, photo.id,))
                 items_with_errors.append(photo)
                 raise
 
@@ -244,7 +277,10 @@ class FlickrBackup(object):
                 print("Processing %s photos" % recently_updated.get('total'))
                 total_printed = True
 
-            for photo in recently_updated.findall('photo'):
+            for item in recently_updated.findall('photo'):
+                # Decorate with the Photo class
+                photo = Photo.fromSearchResult(item)
+
                 if THREADED:
                     req = threadpool.WorkRequest(threaded_download, [photo], {})
                     thread_pool.putRequest(req)
@@ -252,12 +288,15 @@ class FlickrBackup(object):
                     try:
                         self.download_photo(photo)
                     except:
-                        logging.exception("An unexpected error occurred downloading %s (%s)" % (photo.get('title'), photo.get('id'),))
+                        logging.exception("An unexpected error occurred downloading %s (%s)" % (photo.title, photo.id,))
                         items_with_errors.append(photo)
 
         thread_pool.wait()
 
         if items_with_errors:
+
+            if self.verbose:
+                print("%d items could not be downloaded. Retrying %d times" % (len(items_with_errors), self.retry))
 
             retry_count = 0
             while retry_count < self.retry:
@@ -269,8 +308,8 @@ class FlickrBackup(object):
                     try:
                         self.download_photo(photo)
                     except:
-                        logging.exception("An unexpected error occurred downloading %s (%s)" % (photo.get('title'), photo.get('id'),))
-                        items_with_errors.append(photo)
+                        logging.exception("An unexpected error occurred downloading %s (%s)" % (photo.title, photo.id,))
+                        still_in_error.append(photo)
                 items_with_errors = still_in_error
 
                 if not items_with_errors:
@@ -279,11 +318,11 @@ class FlickrBackup(object):
             if items_with_errors:
                 print("Download of the following items did not succeed:", file=sys.stderr)
                 for photo in items_with_errors:
-                    print(photo.get('id'), file=sys.stderr)
+                    print(photo.id, file=sys.stderr)
 
                 if error_file:
                     with open(error_file, 'a') as ef:
-                        print(photo.get('id'), file=ef)
+                        print(photo.id, file=ef)
 
                 return False
 
