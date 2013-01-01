@@ -5,7 +5,6 @@
 
 # To do:
 #  - Log properly to file
-#  - Re-processing from file
 
 from __future__ import print_function
 
@@ -235,7 +234,7 @@ class FlickrBackup(object):
 
             for item in recently_updated.findall('photo'):
                 # Decorate with the Photo class
-                photo = Photo.fromSearchResult(item)
+                photo = Photo.fromSearchResult(item, flickr_usernsid=self.flickr_usernsid)
 
                 if THREADED:
                     req = threadpool.WorkRequest(threaded_download, [photo], {})
@@ -279,7 +278,7 @@ class FlickrBackup(object):
         for id in ids:
             item = self.flickr_api.photos_getInfo(photo_id=id)
             # Decorate with the Photo class
-            photo = Photo.fromInfo(item.find('photo'))
+            photo = Photo.fromInfo(item.find('photo'), flickr_usernsid=self.flickr_usernsid)
 
             if THREADED:
                 req = threadpool.WorkRequest(threaded_download, [photo], {})
