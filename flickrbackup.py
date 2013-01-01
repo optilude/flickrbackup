@@ -217,7 +217,10 @@ def run(destination, min_date, store_once=False, keep_existing=False, verbose=Fa
     if items_with_errors:
         print("Download of the following items did not succeed:", file=sys.stderr)
         for item in items_with_errors:
-            print(item, sys.stderr)
+            print(item, file=sys.stderr)
+        return False
+    else:
+        return True
 
 #
 # CLI
@@ -255,8 +258,11 @@ if __name__ == '__main__':
 
     # Run the backup
     print("Running backup of images updated since %s" % from_date)
-    run(destination, from_date, arguments.store_once, arguments.keep_existing, arguments.verbose)
+    success = run(destination, from_date, arguments.store_once, arguments.keep_existing, arguments.verbose)
 
     # Store today's date
     with open(stamp_filename, 'w') as stamp:
         stamp.write(today)
+
+    if not success:
+        sys.exit(1)
