@@ -25,7 +25,7 @@ Note: You must have a Flickr Pro account to use this tool, since Flickr only
 allows access to original-scale images for Pro members.
 
 The first time you run flickrbackup, you should specify a start date, using the
-format YYYY-MM-DD::
+format ``YYYY-MM-DD``::
 
     $ flickrbackup -f 2012-02-28 -v photos
 
@@ -35,22 +35,40 @@ after this step.
 
 Once authorised, flickrbackup will download all photos and videos for the
 authorised account that have been created or updated on or after the "from" date
-(February 28th, 2012 in this case) into the directory specified ("photos" in
+(February 28th, 2012 in this case) into the directory specified (``photos`` in
 this case). Items are organised into subfolders by set and the year, month and
 day they were taken. If an item appears in multiple sets, it will be copied into
 both set directories. Metadata such as the title, description, tags and other
-information will be placed in a file with a ".txt" extension next to the image
+information will be placed in a file with a ``.txt`` extension next to the image
 file. The image file name is based on the Flickr id of the image.
 
-After the first successful run, a special file named ".stamp" will be placed in
-the download directory, containing the date of the last backup. This allows
-flickrbackup to be run again without the "-f" argument, for example in a
+After the first successful run, a special file named ``.stamp`` will be placed
+in the download directory, containing the date of the last backup. This allows
+flickrbackup to be run again without the ``-f`` argument, for example in a
 scheduled nightly "cron" job, picking up from where it left off::
 
     flickrbackup /path/to/photos
 
 Here, we have also omitted the "-v" (verbose) flag, which means only errors and
 important messages are output to the console.
+
+What if there are errors, e.g. due to a temporary conneciton problem?
+flickrbackup will attempt to download them again (you can control how many
+times or turn this off using the ``--retry`` option), but if there are still
+errors they will be printed to the console.
+
+We can store a list of the ids of the photos and videos that were not correctly
+processed by using the ``--error-file`` (``-e``) flag::
+
+    flickrbackup -e /path/to/photos/errors.txt /path/to/photos
+
+Later, we can attempt to manually re-process just these photos using the
+``--download`` (``-d``) option::
+
+    $ flickrbackup --download /path/to/photos/errors.txt /path/to/photos
+
+If this succeeds, you should delete ``errors.txt``, since the ``-e`` option
+will always append to, not replace, this file.
 
 To see further help, run::
 
@@ -147,6 +165,7 @@ Changelog
 Version 0.7, released 2013-01-01
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+* Added ``-download`` option
 * Added ``--retry`` and ``--error-file`` options
 
 Version 0.6, released 2012-12-31

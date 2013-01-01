@@ -117,57 +117,11 @@ class FlickrBackup(object):
         # Initialise connection to Flickr
         self.flickr_api, self.flickr_usernsid = self.retrieve_flickr_token()
 
-    def retrieve_flickr_token(self):
-        flickr_api = flickrapi.FlickrAPI(FLICKR_API_KEY, secret=FLICKR_API_SECRET)
-
-        (token, frob) = flickr_api.get_token_part_one(perms='write')
-        if not token:
-            raw_input("Press ENTER after you authorized this program")
-        flickr_api.get_token_part_two((token, frob))
-
-        flickr_usernsid = flickr_api.auth_checkToken(auth_token=token).find('auth').find('user').get('nsid')
-
-        return (flickr_api, flickr_usernsid)
-
-    # Helpers
-
-    def get_photo_sets(self, photo):
-        return self.flickr_api.photos_getAllContexts(photo_id=photo.id).findall('set')
-
-    def normalize_filename(self, filename):
-        # Take a rather liberal approach to what's an allowable filename
-        return filename.replace(os.path.sep, '')
-
-    def get_set_directory(self, set_info):
-        dirname = os.path.join(self.destination, self.normalize_filename(set_info.get('title')))
-        with dirlock:
-            if not os.path.exists(dirname):
-                os.mkdir(dirname)
-        return dirname
-
-    def get_date_directory(self, parent, photo):
-        date_taken = photo.date_taken.split(' ')[0]
-        year, month, day = date_taken.split('-')
-        dirname = os.path.join(parent, year, month, day)
-        with dirlock:
-            if not os.path.exists(dirname):
-                os.makedirs(dirname)
-        return dirname
-
-    def write_metadata(self, photo_filepath, photo):
-        filename = photo_filepath + "." + METADATA_EXTENSION
-        with open(filename, 'w') as f:
-            print("[Information]", file=f)
-            print((u"id = %s" % photo.id).encode('utf-8'), file=f)
-            print((u"title = %s" % photo.title).encode('utf-8'), file=f)
-            print((u"description = %s" % (photo.description or "")).encode('utf-8'), file=f)
-            print((u"public = %s" % ("yes" if photo.is_public else "no")).encode('utf-8'), file=f)
-            print((u"friends = %s" % ("yes" if photo.is_friend else "no")).encode('utf-8'), file=f)
-            print((u"family = %s" % ("yes" if photo.is_family else "no")).encode('utf-8'), file=f)
-            print((u"taken = %s" % photo.date_taken).encode('utf-8'), file=f)
-            print((u"tags = %s" % ' '.join(photo.tags)).encode('utf-8'), file=f)
+    # Operations
 
     def download_photo(self, photo):
+        """Download a single Photo
+        """
 
         def download_callback(count, blocksize, totalsize):
             if not self.verbose:
@@ -241,6 +195,8 @@ class FlickrBackup(object):
         return True
 
     def run(self, min_date, error_file=None):
+        """Run a backup of all photos taken since min_date
+        """
 
         if not os.path.exists(self.destination):
             os.mkdir(self.destination)
@@ -294,39 +250,137 @@ class FlickrBackup(object):
         thread_pool.wait()
 
         if items_with_errors:
-
             if self.verbose:
                 print("%d items could not be downloaded. Retrying %d times" % (len(items_with_errors), self.retry))
-
-            retry_count = 0
-            while retry_count < self.retry:
-                # Retry, this time without threading
-                retry_count += 1
-
-                still_in_error = []
-                for photo in items_with_errors:
-                    try:
-                        self.download_photo(photo)
-                    except:
-                        logging.exception("An unexpected error occurred downloading %s (%s)" % (photo.title, photo.id,))
-                        still_in_error.append(photo)
-                items_with_errors = still_in_error
-
-                if not items_with_errors:
-                    break
-
-            if items_with_errors:
-                print("Download of the following items did not succeed:", file=sys.stderr)
-                for photo in items_with_errors:
-                    print(photo.id, file=sys.stderr)
-
-                if error_file:
-                    with open(error_file, 'a') as ef:
-                        print(photo.id, file=ef)
-
-                return False
+            return self.retry(items_with_errors, error_file=error_file)
 
         return True
+
+    def download(self, ids, error_file=None):
+        """Download photos with the given ids
+        """
+
+        if not os.path.exists(self.destination):
+            os.mkdir(self.destination)
+
+        items_with_errors = []
+        thread_pool = threadpool.ThreadPool(self.threadpoolsize)
+
+        def threaded_download(photo):
+            try:
+                self.download_photo(photo)
+            except Exception:
+                logging.exception("An unexpected error occurred downloading %s (%s)" % (photo.title, photo.id,))
+                items_with_errors.append(photo)
+                raise
+
+        print("Processing %d photos" % len(ids))
+
+        for id in ids:
+            item = self.flickr_api.photos_getInfo(photo_id=id)
+            # Decorate with the Photo class
+            photo = Photo.fromInfo(item.find('photo'))
+
+            if THREADED:
+                req = threadpool.WorkRequest(threaded_download, [photo], {})
+                thread_pool.putRequest(req)
+            else:
+                try:
+                    self.download_photo(photo)
+                except:
+                    logging.exception("An unexpected error occurred downloading %s (%s)" % (photo.title, photo.id,))
+                    items_with_errors.append(photo)
+
+        thread_pool.wait()
+
+        if items_with_errors:
+            if self.verbose:
+                print("%d items could not be downloaded. Retrying %d times" % (len(items_with_errors), self.retry))
+            return self.retry(items_with_errors, error_file=error_file)
+
+        return True
+
+    # Helpers
+
+    def retrieve_flickr_token(self):
+        flickr_api = flickrapi.FlickrAPI(FLICKR_API_KEY, secret=FLICKR_API_SECRET)
+
+        (token, frob) = flickr_api.get_token_part_one(perms='write')
+        if not token:
+            raw_input("Press ENTER after you authorized this program")
+        flickr_api.get_token_part_two((token, frob))
+
+        flickr_usernsid = flickr_api.auth_checkToken(auth_token=token).find('auth').find('user').get('nsid')
+
+        return (flickr_api, flickr_usernsid)
+
+    def get_photo_sets(self, photo):
+        return self.flickr_api.photos_getAllContexts(photo_id=photo.id).findall('set')
+
+    def normalize_filename(self, filename):
+        # Take a rather liberal approach to what's an allowable filename
+        return filename.replace(os.path.sep, '')
+
+    def get_set_directory(self, set_info):
+        dirname = os.path.join(self.destination, self.normalize_filename(set_info.get('title')))
+        with dirlock:
+            if not os.path.exists(dirname):
+                os.mkdir(dirname)
+        return dirname
+
+    def get_date_directory(self, parent, photo):
+        date_taken = photo.date_taken.split(' ')[0]
+        year, month, day = date_taken.split('-')
+        dirname = os.path.join(parent, year, month, day)
+        with dirlock:
+            if not os.path.exists(dirname):
+                os.makedirs(dirname)
+        return dirname
+
+    def write_metadata(self, photo_filepath, photo):
+        filename = photo_filepath + "." + METADATA_EXTENSION
+        with open(filename, 'w') as f:
+            print("[Information]", file=f)
+            print((u"id = %s" % photo.id).encode('utf-8'), file=f)
+            print((u"title = %s" % photo.title).encode('utf-8'), file=f)
+            print((u"description = %s" % (photo.description or "")).encode('utf-8'), file=f)
+            print((u"public = %s" % ("yes" if photo.is_public else "no")).encode('utf-8'), file=f)
+            print((u"friends = %s" % ("yes" if photo.is_friend else "no")).encode('utf-8'), file=f)
+            print((u"family = %s" % ("yes" if photo.is_family else "no")).encode('utf-8'), file=f)
+            print((u"taken = %s" % photo.date_taken).encode('utf-8'), file=f)
+            print((u"tags = %s" % ' '.join(photo.tags)).encode('utf-8'), file=f)
+
+    def retry(self, items_with_errors, error_file=None):
+        retry_count = 0
+        while retry_count < self.retry:
+            # Retry, this time without threading
+            retry_count += 1
+
+            still_in_error = []
+            for photo in items_with_errors:
+                try:
+                    self.download_photo(photo)
+                except:
+                    logging.exception("An unexpected error occurred downloading %s (%s)" % (photo.title, photo.id,))
+                    still_in_error.append(photo)
+            items_with_errors = still_in_error
+
+            if not items_with_errors:
+                break
+
+        if items_with_errors:
+            print("Download of the following items did not succeed:", file=sys.stderr)
+            for photo in items_with_errors:
+                print(photo.id, file=sys.stderr)
+
+            if error_file:
+                with open(error_file, 'a') as ef:
+                    print(photo.id, file=ef)
+
+            return False
+
+        return True
+
 
 #
 # CLI
@@ -342,39 +396,63 @@ def main():
     parser.add_argument('-k', '--keep-existing', action='store_true', help='Keep existing photos (default is to replace in case they have changed)')
     parser.add_argument('-r', '--retry', type=int, default=1, help='Retry download of failed images N times default is to retry once)')
     parser.add_argument('-e', '--error-file', help='Append ids of erroneous items to this file, to allow retry later')
+    parser.add_argument('-d', '--download', metavar='FILE', help='Attempt to download the photos with the ids in the given file, one per line (usually saved by the --error-file option)')
     parser.add_argument('destination', help='Destination directory')
 
     arguments = parser.parse_args()
 
     destination = arguments.destination
-    from_date = arguments.from_date
+    success = False
 
-    # Figure out the start date
-    stamp_filename = os.path.join(destination, STAMP_FILENAME)
-    if not from_date:
-        if os.path.exists(stamp_filename):
-            with open(stamp_filename, 'r') as stamp:
-                from_date = stamp.read().strip()
-    if not from_date:
-        logging.error("No start date specified and no previous time stamp found in %s." % stamp_filename)
-        sys.exit(2)
+    if arguments.download:
 
-    # Capture today's date (the script may run for more than one day)
-    today = datetime.date.today().isoformat()
+        if not os.path.exists(arguments.download):
+            logging.error("Download file %s does not exist." % arguments.download)
+            sys.exit(2)
 
-    # Run the backup
-    print("Running backup of images updated since %s" % from_date)
-    backup = FlickrBackup(destination,
-            store_once=arguments.store_once,
-            keep_existing=arguments.keep_existing,
-            retry=arguments.retry,
-            verbose=arguments.verbose
-        )
-    success = backup.run(from_date, arguments.error_file)
+        print("Running backup of images found in %s" % arguments.download)
+        with open(arguments.download, 'r') as f:
+            ids = [id.strip() for id in f.readlines()]
 
-    # Store today's date
-    with open(stamp_filename, 'w') as stamp:
-        stamp.write(today)
+        backup = FlickrBackup(destination,
+                store_once=arguments.store_once,
+                keep_existing=arguments.keep_existing,
+                retry=arguments.retry,
+                verbose=arguments.verbose
+            )
+        success = backup.download(ids, arguments.error_file)
+
+    else:
+
+        from_date = arguments.from_date
+
+        # Figure out the start date
+        stamp_filename = os.path.join(destination, STAMP_FILENAME)
+        if not from_date:
+            if os.path.exists(stamp_filename):
+                with open(stamp_filename, 'r') as stamp:
+                    from_date = stamp.read().strip()
+
+        if not from_date:
+            logging.error("No start date specified and no previous time stamp found in %s." % stamp_filename)
+            sys.exit(2)
+
+        # Capture today's date (the script may run for more than one day)
+        today = datetime.date.today().isoformat()
+
+        # Run the backup
+        print("Running backup of images updated since %s" % from_date)
+        backup = FlickrBackup(destination,
+                store_once=arguments.store_once,
+                keep_existing=arguments.keep_existing,
+                retry=arguments.retry,
+                verbose=arguments.verbose
+            )
+        success = backup.run(from_date, arguments.error_file)
+
+        # Store today's date
+        with open(stamp_filename, 'w') as stamp:
+            stamp.write(today)
 
     if not success:
         sys.exit(1)
