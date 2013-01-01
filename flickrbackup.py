@@ -32,6 +32,36 @@ THREADED = True  # Turn off for easier debugging
 dirlock = threading.RLock()
 
 
+class Photo(object):
+
+    def __init__(self, id, originalsecret=None, farm=None, media='photo',
+        title=None, description=None, date_taken=None,
+        is_public=None, is_friend=None, is_family=None,
+        tags=None, url_o=None,
+    ):
+        self.id = id
+        self.originalsecret = originalsecret
+        self.farm = farm
+        self.media = media
+        self.title = title
+        self.description = description
+        self.date_taken = date_taken
+        self.is_public = is_public
+        self.is_friend = is_friend
+        self.is_family = is_family
+        self.tags = tags
+        self._url_o = url_o
+
+    @property
+    def url(self):
+        if self._url_o:
+            return self._url_o
+        elif self.media == 'video':
+            return "http://www.flickr.com/photos/%s/%s/play/orig/%s" % (self.flickr_usernsid, photo.get('id'), photo.get('originalsecret'))
+        else:
+            return photo.get('url_o')
+
+
 class FlickrBackup(object):
 
     def __init__(self, destination, store_once=False, keep_existing=False, retry=1, verbose=False, threadpoolsize=7):
