@@ -50,12 +50,22 @@ scheduled nightly "cron" job, picking up from where it left off::
     flickrbackup /path/to/photos
 
 Here, we have also omitted the "-v" (verbose) flag, which means only errors and
-important messages are output to the console.
+important messages are output to the console, as well as a log of the ids of the
+photos that have been processed (mostly as a progress indicator).
+
+It may be useful to log important messages to a file. In this case, use the
+``--log-file`` (``-l``) option (with or without the ``-v`` flag to control the
+amount of information output)::
+
+    flickrbackup -l /var/log/flickrbackup.log /path/to/photos
+
+The log file will contain the type of message (e.g. ``INFO`` for informational
+messages or ``WARN`` for warnings) and the date and time of the message as well.
 
 What if there are errors, e.g. due to a temporary conneciton problem?
-flickrbackup will attempt to download them again (you can control how many
-times or turn this off using the ``--retry`` option), but if there are still
-errors they will be printed to the console.
+flickrbackup will attempt to download them again (you can control how many times
+or turn this off using the ``--retry`` option; the default is to retry once),
+but if there are still errors they will be printed to the console/log file.
 
 We can store a list of the ids of the photos and videos that were not correctly
 processed by using the ``--error-file`` (``-e``) flag::
@@ -165,6 +175,7 @@ Changelog
 Version 0.7, released 2013-01-01
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+* Added ``--log-file`` option
 * Added ``-download`` option
 * Added ``--retry`` and ``--error-file`` options
 

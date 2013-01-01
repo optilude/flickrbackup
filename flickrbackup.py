@@ -3,9 +3,6 @@
 # requires flickrapi, threadpool
 # Baesd on http://nathanvangheem.com/scripts/migrateflickrtopicasanokeyresize.py
 
-# To do:
-#  - Log properly to file
-
 from __future__ import print_function
 
 import os
@@ -29,6 +26,8 @@ STAMP_FILENAME = '.stamp'
 
 THREADED = True  # Turn off for easier debugging
 dirlock = threading.RLock()
+
+logger = logging.getLogger('flickrbackup')
 
 
 class Photo(object):
@@ -154,14 +153,12 @@ class FlickrBackup(object):
         dirname = self.get_date_directory(dirname, photo)
 
         # Download
-        if self.verbose:
-            print('Processing photo "%s" at url "%s".' % (photo.title, photo.url))
+        logger.debug('Processing photo "%s" at url "%s".', photo.title, photo.url)
 
         filepath = os.path.join(dirname, filename)
 
         if self.keep_existing and os.path.exists(filepath):
-            if self.verbose:
-                print('Image "%s" at %s already exists.' % (photo.title, filepath))
+            logger.debug('Image "%s" at %s already exists.', photo.title, filepath)
         else:
             tmp_fd, tmp_filename = tempfile.mkstemp()
             tmp_filename, headers = urllib.urlretrieve(photo.url, tmp_filename, download_callback)
@@ -169,8 +166,7 @@ class FlickrBackup(object):
             os.close(tmp_fd)
 
             self.write_metadata(filepath, photo)
-            if self.verbose:
-                print('Download of "%s" at %s to %s finished.' % (photo.title, photo.url, filepath))
+            logger.debug('Download of "%s" at %s to %s finished.', photo.title, photo.url, filepath)
 
         # Copy to additional set directories
         if not self.store_once:
@@ -180,14 +176,13 @@ class FlickrBackup(object):
                 copy_filepath = os.path.join(copy_dirname, filename)
 
                 if self.keep_existing and os.path.exists(filepath):
-                    if self.verbose:
-                        print('Image "%s" at %s already exists.' % (photo.title, filepath))
+                    logger.debug('Image "%s" at %s already exists.', photo.title, filepath)
                 else:
                     shutil.copyfile(filepath, copy_filepath)
                     shutil.copyfile(filepath + "." + METADATA_EXTENSION, copy_filepath + "." + METADATA_EXTENSION)
-                    if self.verbose:
-                        print('Photo "%s" also copied to %s' % (photo.title, copy_filepath,))
+                    logger.debug('Photo "%s" also copied to %s', photo.title, copy_filepath)
 
+        # Give visual feedback in the console, but don't log
         if not self.verbose:
             print(photo.id)
 
@@ -211,7 +206,7 @@ class FlickrBackup(object):
             try:
                 self.download_photo(photo)
             except Exception:
-                logging.exception("An unexpected error occurred downloading %s (%s)" % (photo.title, photo.id,))
+                logger.exception("An unexpected error occurred downloading %s (%s)" % (photo.title, photo.id,))
                 items_with_errors.append(photo)
                 raise
 
@@ -229,7 +224,7 @@ class FlickrBackup(object):
                 page += 1
 
             if not total_printed:
-                print("Processing %s photos" % recently_updated.get('total'))
+                logger.info("Processing %s photos", recently_updated.get('total'))
                 total_printed = True
 
             for item in recently_updated.findall('photo'):
@@ -243,14 +238,13 @@ class FlickrBackup(object):
                     try:
                         self.download_photo(photo)
                     except:
-                        logging.exception("An unexpected error occurred downloading %s (%s)" % (photo.title, photo.id,))
+                        logger.exception("An unexpected error occurred downloading %s (%s)" % (photo.title, photo.id,))
                         items_with_errors.append(photo)
 
         thread_pool.wait()
 
         if items_with_errors:
-            if self.verbose:
-                print("%d items could not be downloaded. Retrying %d times" % (len(items_with_errors), self.retry))
+            logger.warning("%d items could not be downloaded. Retrying %d times.", len(items_with_errors), self.retry)
             return self.retry(items_with_errors, error_file=error_file)
 
         return True
@@ -269,11 +263,11 @@ class FlickrBackup(object):
             try:
                 self.download_photo(photo)
             except Exception:
-                logging.exception("An unexpected error occurred downloading %s (%s)" % (photo.title, photo.id,))
+                logger.exception("An unexpected error occurred downloading %s (%s)", photo.title, photo.id)
                 items_with_errors.append(photo)
                 raise
 
-        print("Processing %d photos" % len(ids))
+        logger.info("Processing %d photos", len(ids))
 
         for id in ids:
             item = self.flickr_api.photos_getInfo(photo_id=id)
@@ -287,14 +281,14 @@ class FlickrBackup(object):
                 try:
                     self.download_photo(photo)
                 except:
-                    logging.exception("An unexpected error occurred downloading %s (%s)" % (photo.title, photo.id,))
+                    logger.exception("An unexpected error occurred downloading %s (%s)", photo.title, photo.id)
                     items_with_errors.append(photo)
 
         thread_pool.wait()
 
         if items_with_errors:
             if self.verbose:
-                print("%d items could not be downloaded. Retrying %d times" % (len(items_with_errors), self.retry))
+                logger.warning("%d items could not be downloaded. Retrying %d times", len(items_with_errors), self.retry)
             return self.retry(items_with_errors, error_file=error_file)
 
         return True
@@ -360,7 +354,7 @@ class FlickrBackup(object):
                 try:
                     self.download_photo(photo)
                 except:
-                    logging.exception("An unexpected error occurred downloading %s (%s)" % (photo.title, photo.id,))
+                    logger.exception("An unexpected error occurred downloading %s (%s)", photo.title, photo.id)
                     still_in_error.append(photo)
             items_with_errors = still_in_error
 
@@ -368,10 +362,7 @@ class FlickrBackup(object):
                 break
 
         if items_with_errors:
-            print("Download of the following items did not succeed:", file=sys.stderr)
-            for photo in items_with_errors:
-                print(photo.id, file=sys.stderr)
-
+            logger.error("Download of the following items did not succeed, even after %d retries: %s", self.retry, ' '.join([photo.id for photo in items_with_errors]))
             if error_file:
                 with open(error_file, 'a') as ef:
                     print(photo.id, file=ef)
@@ -388,6 +379,8 @@ class FlickrBackup(object):
 
 def main():
 
+    # Process command line arguments
+
     parser = argparse.ArgumentParser(description='Incremental Flickr backup')
     parser.add_argument('-f', '--from', dest='from_date', help='Start date (YYYY-MM-DD)')
     parser.add_argument('-v', '--verbose', action='store_true', help='Log progress information')
@@ -396,6 +389,7 @@ def main():
     parser.add_argument('-r', '--retry', type=int, default=1, help='Retry download of failed images N times default is to retry once)')
     parser.add_argument('-e', '--error-file', help='Append ids of erroneous items to this file, to allow retry later')
     parser.add_argument('-d', '--download', metavar='FILE', help='Attempt to download the photos with the ids in the given file, one per line (usually saved by the --error-file option)')
+    parser.add_argument('-l', '--log-file', help='Log warnings and errors to the given file')
     parser.add_argument('destination', help='Destination directory')
 
     arguments = parser.parse_args()
@@ -403,13 +397,37 @@ def main():
     destination = arguments.destination
     success = False
 
+    # Setup logging
+
+    if arguments.verbose:
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
+
+    logger.propagate = False
+
+    # Console logging
+    console_log_handler = logging.StreamHandler()
+    console_log_formatter = logging.Formatter('%(message)s')
+    console_log_handler.setFormatter(console_log_formatter)
+    logger.addHandler(console_log_handler)
+
+    # File logging
+    if arguments.log_file:
+        file_log_handler = logging.FileHandler(arguments.log_file)
+        file_log_formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s', "%Y-%m-%d %H:%M:%S")
+        file_log_handler.setFormatter(file_log_formatter)
+        logger.addHandler(file_log_handler)
+
+    # Run
+
     if arguments.download:
 
         if not os.path.exists(arguments.download):
-            logging.error("Download file %s does not exist." % arguments.download)
+            logger.error("Download file %s does not exist.", arguments.download)
             sys.exit(2)
 
-        print("Running backup of images found in %s" % arguments.download)
+        logger.info("Running backup of images found in %s", arguments.download)
         with open(arguments.download, 'r') as f:
             ids = [id.strip() for id in f.readlines()]
 
@@ -433,14 +451,14 @@ def main():
                     from_date = stamp.read().strip()
 
         if not from_date:
-            logging.error("No start date specified and no previous time stamp found in %s." % stamp_filename)
+            logger.error("No start date specified and no previous time stamp found in %s.", stamp_filename)
             sys.exit(2)
 
         # Capture today's date (the script may run for more than one day)
         today = datetime.date.today().isoformat()
 
         # Run the backup
-        print("Running backup of images updated since %s" % from_date)
+        logger.info("Running backup of images updated since %s", from_date)
         backup = FlickrBackup(destination,
                 store_once=arguments.store_once,
                 keep_existing=arguments.keep_existing,
@@ -455,6 +473,8 @@ def main():
 
     if not success:
         sys.exit(1)
+
+    logger.info("Done")
 
 if __name__ == '__main__':
     main()
