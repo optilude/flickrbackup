@@ -59,14 +59,14 @@ class FlickrBackup(object):
 
     # Helpers
 
-    def get_photo_url(self, info):
-        if info.get('media') == 'video':
-            return "http://www.flickr.com/photos/%s/%s/play/orig/%s" % (self.flickr_usernsid, info.get('id'), info.get('originalsecret'))
+    def get_photo_url(self, photo):
+        if photo.get('media') == 'video':
+            return "http://www.flickr.com/photos/%s/%s/play/orig/%s" % (self.flickr_usernsid, photo.get('id'), photo.get('originalsecret'))
         else:
-            return info.get('url_o')
+            return photo.get('url_o')
 
-    def get_photo_sets(self, info):
-        return self.flickr_api.photos_getAllContexts(photo_id=info.get('id')).findall('set')
+    def get_photo_sets(self, photo):
+        return self.flickr_api.photos_getAllContexts(photo_id=photo.get('id')).findall('set')
 
     def normalize_filename(self, filename):
         # Take a rather liberal approach to what's an allowable filename
@@ -79,8 +79,8 @@ class FlickrBackup(object):
                 os.mkdir(dirname)
         return dirname
 
-    def get_date_directory(self, parent, info):
-        date_taken = info.get('datetaken').split(' ')[0]
+    def get_date_directory(self, parent, photo):
+        date_taken = photo.get('datetaken').split(' ')[0]
         year, month, day = date_taken.split('-')
         dirname = os.path.join(parent, year, month, day)
         with dirlock:
