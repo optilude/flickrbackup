@@ -147,7 +147,7 @@ Changelog
 Version 0.7, released 2013-01-01
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* Added --retry and --error-file options
+* Added ``--retry`` and ``--error-file`` options
 
 Version 0.6, released 2012-12-31
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
