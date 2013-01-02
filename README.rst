@@ -150,7 +150,7 @@ limited nature of the system. Some hints follow:
     dest=/c/photos
     email=you@example.com
 
-    flickrbackup.py -e ${dest}/errors.txt ${dest} 2>> /var/log/flickrbackup.log
+    flickrbackup.py -e ${dest}/errors.txt -l /var/log/flickrbackup.log ${dest}
     rc=$?
 
     if [[ $rc != 0 ]]; then
