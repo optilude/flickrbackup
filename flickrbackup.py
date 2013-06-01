@@ -177,7 +177,7 @@ class FlickrBackup(object):
 
                 if self.keep_existing and os.path.exists(filepath):
                     logger.debug('Image "%s" at %s already exists.', photo.title, filepath)
-                else:
+                elif filepath != copy_filepath:
                     shutil.copyfile(filepath, copy_filepath)
                     shutil.copyfile(filepath + "." + METADATA_EXTENSION, copy_filepath + "." + METADATA_EXTENSION)
                     logger.debug('Photo "%s" also copied to %s', photo.title, copy_filepath)
