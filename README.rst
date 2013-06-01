@@ -172,8 +172,8 @@ limited nature of the system. Some hints follow:
 Changelog
 ---------
 
-Version 0.8, released 2013-06-01
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Version 0.8.1, released 2013-06-01
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 * Fixed potential issue with copying directories to sets they are already in
 
