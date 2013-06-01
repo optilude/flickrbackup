@@ -175,7 +175,7 @@ class FlickrBackup(object):
                 copy_dirname = self.get_date_directory(copy_dirname, photo)
                 copy_filepath = os.path.join(copy_dirname, filename)
 
-                if self.keep_existing and os.path.exists(filepath):
+                if self.keep_existing and os.path.exists(copy_filepath):
                     logger.debug('Image "%s" at %s already exists.', photo.title, filepath)
                 elif filepath != copy_filepath:
                     shutil.copyfile(filepath, copy_filepath)
