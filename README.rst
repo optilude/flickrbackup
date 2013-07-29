@@ -172,6 +172,11 @@ limited nature of the system. Some hints follow:
 Changelog
 ---------
 
+Version 0.8.2, released 2013-07-29
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Attempt to fix missing README.rst issue in tarball
+
 Version 0.8.1, released 2013-06-01
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
