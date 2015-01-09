@@ -365,7 +365,8 @@ class FlickrBackup(object):
             logger.error("Download of the following items did not succeed, even after %d retries: %s", self.retry, ' '.join([photo.id for photo in items_with_errors]))
             if error_file:
                 with open(error_file, 'a') as ef:
-                    print(photo.id, file=ef)
+                    for photo in items_with_errors:
+                        print(photo.id, file=ef)
 
             return False
 
