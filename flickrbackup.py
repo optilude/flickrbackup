@@ -245,7 +245,7 @@ class FlickrBackup(object):
 
         if items_with_errors:
             logger.warning("%d items could not be downloaded. Retrying %d times.", len(items_with_errors), self.retry)
-            return self.retry(items_with_errors, error_file=error_file)
+            return self.retry_download(items_with_errors, error_file=error_file)
 
         return True
 
@@ -343,7 +343,7 @@ class FlickrBackup(object):
             print((u"taken = %s" % photo.date_taken).encode('utf-8'), file=f)
             print((u"tags = %s" % ' '.join(photo.tags)).encode('utf-8'), file=f)
 
-    def retry(self, items_with_errors, error_file=None):
+    def retry_download(self, items_with_errors, error_file=None):
         retry_count = 0
         while retry_count < self.retry:
             # Retry, this time without threading
