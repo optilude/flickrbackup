@@ -1,4 +1,4 @@
-#! /usr/bin/python
+#!/usr/local/bin/python2.7
 #
 # requires flickrapi, threadpool
 # Baesd on http://nathanvangheem.com/scripts/migrateflickrtopicasanokeyresize.py
@@ -108,7 +108,7 @@ class FlickrBackup(object):
         self.destination = destination
         self.store_once = store_once
         self.keep_existing = keep_existing
-        self.retry = retry
+        self.max_retries = retry
         self.verbose = verbose
         self.threadpoolsize = threadpoolsize
 
@@ -244,8 +244,8 @@ class FlickrBackup(object):
         thread_pool.wait()
 
         if items_with_errors:
-            logger.warning("%d items could not be downloaded. Retrying %d times.", len(items_with_errors), self.retry)
-            return self.retry_download(items_with_errors, error_file=error_file)
+            logger.warning("%d items could not be downloaded. Retrying %d times.", len(items_with_errors), self.max_retries)
+            return self.retry(items_with_errors, error_file=error_file)
 
         return True
 
@@ -288,7 +288,7 @@ class FlickrBackup(object):
 
         if items_with_errors:
             if self.verbose:
-                logger.warning("%d items could not be downloaded. Retrying %d times", len(items_with_errors), self.retry)
+                logger.warning("%d items could not be downloaded. Retrying %d times", len(items_with_errors), self.max_retries)
             return self.retry(items_with_errors, error_file=error_file)
 
         return True
@@ -312,7 +312,7 @@ class FlickrBackup(object):
 
     def normalize_filename(self, filename):
         # Take a rather liberal approach to what's an allowable filename
-        return filename.replace(os.path.sep, '')
+        return filename.replace(os.path.sep, '').encode('ascii', 'xmlcharrefreplace')
 
     def get_set_directory(self, set_info):
         dirname = os.path.join(self.destination, self.normalize_filename(set_info.get('title')))
@@ -343,9 +343,9 @@ class FlickrBackup(object):
             print((u"taken = %s" % photo.date_taken).encode('utf-8'), file=f)
             print((u"tags = %s" % ' '.join(photo.tags)).encode('utf-8'), file=f)
 
-    def retry_download(self, items_with_errors, error_file=None):
+    def retry(self, items_with_errors, error_file=None):
         retry_count = 0
-        while retry_count < self.retry:
+        while retry_count < self.max_retries:
             # Retry, this time without threading
             retry_count += 1
 
@@ -362,7 +362,7 @@ class FlickrBackup(object):
                 break
 
         if items_with_errors:
-            logger.error("Download of the following items did not succeed, even after %d retries: %s", self.retry, ' '.join([photo.id for photo in items_with_errors]))
+            logger.error("Download of the following items did not succeed, even after %d retries: %s", self.max_retries, ' '.join([photo.id for photo in items_with_errors]))
             if error_file:
                 with open(error_file, 'a') as ef:
                     for photo in items_with_errors:
