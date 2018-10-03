@@ -172,6 +172,12 @@ limited nature of the system. Some hints follow:
 Changelog
 ---------
 
+Version 0.8.3, released 2018-10-03
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Fix encoding error with set names
+
+
 Version 0.8.2, released 2013-07-29
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
