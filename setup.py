@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 setup(
     name="flickrbackup",
-    version="0.8.3",
+    version="0.8.4",
     packages=find_packages(),
     scripts=['flickrbackup.py'],
     install_requires=['flickrapi', 'threadpool'],

@@ -6,15 +6,7 @@ A tool to incrementally backup your photos from `Flickr <http://flickr.com>`_.
 Installation
 -------------
 
-1. Install Python 2.7 (http://python.org) if you don't have it already:
-
-2. Install pip::
-
-    $ wget http://python-distribute.org/distribute_setup.py
-    $ python2.7 distribute_setup.py
-    $ easy_install pip
-
-3. Install package from PyPI::
+Reqiures Python 2.7 and `pip`.
 
     $ pip install flickrbackup
 
@@ -171,6 +163,11 @@ limited nature of the system. Some hints follow:
 
 Changelog
 ---------
+
+Version 0.8.4, released 2019-01-08
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Fix README to stop referring to a defunct website in the installation instructions
 
 Version 0.8.3, released 2018-10-03
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
