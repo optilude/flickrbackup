@@ -2,8 +2,6 @@
 # requires flickrapi, threadpool
 # Baesd on http://nathanvangheem.com/scripts/migrateflickrtopicasanokeyresize.py
 
-from __future__ import print_function
-
 import os
 import os.path
 import shutil
@@ -344,7 +342,7 @@ class FlickrBackup(object):
 
     def write_metadata(self, photo_filepath, photo):
         filename = photo_filepath + "." + METADATA_EXTENSION
-        with open(filename, 'w') as f:
+        with open(filename, 'w', encoding='utf-8') as f:
             print("[Information]", file=f)
             print("id = %s" % photo.id, file=f)
             print("title = %s" % photo.title, file=f)

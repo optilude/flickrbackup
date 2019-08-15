@@ -98,6 +98,11 @@ you need to, you can delete this file to force re-authorization.
 Changelog
 ---------
 
+Version 0.9.1, released 2019-08-15
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Make metadata files use UTF-8 by default
+
 Version 0.9.0, released 2019-08-15
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
