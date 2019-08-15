@@ -1,4 +1,7 @@
+.vscode/
 .DS_Store
+.Python
+pyvenv.cfg
 *.pyc
 bin
 include
@@ -6,3 +9,5 @@ lib
 photos
 *.egg-info
 dist
+share
+pip-selfcheck.json

@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+#!python
+#
 # requires flickrapi, threadpool
 # Baesd on http://nathanvangheem.com/scripts/migrateflickrtopicasanokeyresize.py
 
@@ -9,9 +10,8 @@ import os.path
 import shutil
 import datetime
 import argparse
-import urllib.request
+import urllib
 import flickrapi
-import flickrapi.exceptions
 import threadpool
 import threading
 import sys
@@ -161,7 +161,7 @@ class FlickrBackup(object):
             logger.debug('Image "%s" at %s already exists.', photo.title, filepath)
         else:
             tmp_fd, tmp_filename = tempfile.mkstemp()
-            tmp_filename, _ = urllib.request.urlretrieve(photo.url, tmp_filename, download_callback)
+            tmp_filename, headers = urllib.urlretrieve(photo.url, tmp_filename, download_callback)
             shutil.move(tmp_filename, filepath)
             os.close(tmp_fd)
 
@@ -296,27 +296,15 @@ class FlickrBackup(object):
     # Helpers
 
     def retrieve_flickr_token(self):
-        flickr_api = flickrapi.FlickrAPI(FLICKR_API_KEY, FLICKR_API_SECRET)
+        flickr_api = flickrapi.FlickrAPI(FLICKR_API_KEY, secret=FLICKR_API_SECRET)
 
-        # Make sure the token is still valid if we have one
-        if flickr_api.token_cache.token:
-            try:
-                flickr_api.test.login()
-            except flickrapi.exceptions.FlickrError:
-                flickr_api.flickr_oauth.token = None
-                del flickr_api.token_cache.token
+        (token, frob) = flickr_api.get_token_part_one(perms='write')
+        if not token:
+            raw_input("Press ENTER after you authorized this program")
+        flickr_api.get_token_part_two((token, frob))
 
-        # Get a new token via the user if we don't have one
-        if not flickr_api.token_cache.token:
-            flickr_api.get_request_token(oauth_callback='oob')
-            authorize_url = flickr_api.auth_url(perms='read')
+        flickr_usernsid = flickr_api.auth_checkToken(auth_token=token).find('auth').find('user').get('nsid')
 
-            print("No token found. You must visit this URL and get the verifier code: %s" % authorize_url)
-            verifier = input('Enter code: ')
-            flickr_api.get_access_token(verifier)
-
-        # Return token information
-        flickr_usernsid = flickr_api.token_cache.token.user_nsid
         return (flickr_api, flickr_usernsid)
 
     def get_photo_sets(self, photo):
@@ -324,7 +312,7 @@ class FlickrBackup(object):
 
     def normalize_filename(self, filename):
         # Take a rather liberal approach to what's an allowable filename
-        return filename.replace(os.path.sep, '').encode('ascii', 'xmlcharrefreplace').decode('ascii')
+        return filename.replace(os.path.sep, '').encode('ascii', 'xmlcharrefreplace')
 
     def get_set_directory(self, set_info):
         dirname = os.path.join(self.destination, self.normalize_filename(set_info.get('title')))
@@ -346,14 +334,14 @@ class FlickrBackup(object):
         filename = photo_filepath + "." + METADATA_EXTENSION
         with open(filename, 'w') as f:
             print("[Information]", file=f)
-            print("id = %s" % photo.id, file=f)
-            print("title = %s" % photo.title, file=f)
-            print("description = %s" % (photo.description or ""), file=f)
-            print("public = %s" % ("yes" if photo.is_public else "no"), file=f)
-            print("friends = %s" % ("yes" if photo.is_friend else "no"), file=f)
-            print("family = %s" % ("yes" if photo.is_family else "no"), file=f)
-            print("taken = %s" % photo.date_taken, file=f)
-            print("tags = %s" % ' '.join(photo.tags), file=f)
+            print((u"id = %s" % photo.id).encode('utf-8'), file=f)
+            print((u"title = %s" % photo.title).encode('utf-8'), file=f)
+            print((u"description = %s" % (photo.description or "")).encode('utf-8'), file=f)
+            print((u"public = %s" % ("yes" if photo.is_public else "no")).encode('utf-8'), file=f)
+            print((u"friends = %s" % ("yes" if photo.is_friend else "no")).encode('utf-8'), file=f)
+            print((u"family = %s" % ("yes" if photo.is_family else "no")).encode('utf-8'), file=f)
+            print((u"taken = %s" % photo.date_taken).encode('utf-8'), file=f)
+            print((u"tags = %s" % ' '.join(photo.tags)).encode('utf-8'), file=f)
 
     def retry(self, items_with_errors, error_file=None):
         retry_count = 0
