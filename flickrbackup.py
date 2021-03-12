@@ -4,6 +4,7 @@
 
 import os
 import os.path
+import re
 import shutil
 import datetime
 import argparse
@@ -160,8 +161,8 @@ class FlickrBackup(object):
         else:
             tmp_fd, tmp_filename = tempfile.mkstemp()
             tmp_filename, _ = urllib.request.urlretrieve(photo.url, tmp_filename, download_callback)
-            shutil.move(tmp_filename, filepath)
             os.close(tmp_fd)
+            shutil.move(tmp_filename, filepath)
 
             self.write_metadata(filepath, photo)
             logger.debug('Download of "%s" at %s to %s finished.', photo.title, photo.url, filepath)
@@ -322,12 +323,14 @@ class FlickrBackup(object):
 
     def normalize_filename(self, filename):
         # Take a rather liberal approach to what's an allowable filename
-        return filename.replace(os.path.sep, '').encode('ascii', 'xmlcharrefreplace').decode('ascii')
+        return re.sub('[^\w\-_\. \?\'!]', '_', filename)
+        #return filename.replace(os.path.sep, '').encode('ascii', 'xmlcharrefreplace').decode('ascii')
 
     def get_set_directory(self, set_info):
         dirname = os.path.join(self.destination, self.normalize_filename(set_info.get('title')))
         with dirlock:
             if not os.path.exists(dirname):
+                logger.debug("Creating directory %s", dirname)
                 os.mkdir(dirname)
         return dirname
 
