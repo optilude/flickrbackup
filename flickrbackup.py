@@ -307,7 +307,7 @@ class FlickrBackup(object):
 
         # Get a new token via the user if we don't have one
         if not flickr_api.token_cache.token:
-            flickr_api.get_request_token(oauth_callback='oob')
+            flickr_api.get_request_token(oauth_callback='oob')  
             authorize_url = flickr_api.auth_url(perms='read')
 
             print("No token found. You must visit this URL and get the verifier code: %s" % authorize_url)
