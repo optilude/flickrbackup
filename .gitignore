@@ -1,4 +1,6 @@
 .vscode/
+.venv/
+build/
 .DS_Store
 .Python
 pyvenv.cfg
