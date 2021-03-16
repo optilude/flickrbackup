@@ -4,7 +4,7 @@ setup(
     version="0.9.1",
     packages=find_packages(),
     scripts=['flickrbackup.py'],
-    install_requires=['flickrapi', 'threadpool'],
+    install_requires=['flickrapi', 'threadpool', 'python-dateutil'],
     package_data={
         # If any package contains *.txt or *.rst files, include them:
         '': ['*.txt', '*.rst', '*.md'],

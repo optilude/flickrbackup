@@ -7,6 +7,7 @@ import os.path
 import re
 import shutil
 import datetime
+import dateutil.parser
 import argparse
 import urllib.request
 import flickrapi
@@ -97,16 +98,18 @@ class Photo(object):
                 is_friend=info.get('isfriend') == '1',
                 is_family=info.get('isfamily') == '1',
                 tags=info.get('tags').split(' '),
-                flickr_usernsid=flickr_usernsid,
+                flickr_usernsid=info.get('owner') or flickr_usernsid,
+                url_o=info.get('url_o')
             )
 
 
 class FlickrBackup(object):
 
-    def __init__(self, destination, store_once=False, keep_existing=False, retry=1, verbose=False, threadpoolsize=7):
+    def __init__(self, destination, store_once=False, keep_existing=False, favorites=False, retry=1, verbose=False, threadpoolsize=7):
         self.destination = destination
         self.store_once = store_once
         self.keep_existing = keep_existing
+        self.favorites = favorites
         self.max_retries = retry
         self.verbose = verbose
         self.threadpoolsize = threadpoolsize
@@ -137,6 +140,7 @@ class FlickrBackup(object):
                     print("Photo: %s --- %i%% - %.1f/%.1fmb" % (photo.title, res, downloaded_so_far, total_size_in_mb))
 
         dirname = self.destination
+        photo_sets = []
 
         if photo.media == 'video':
             # XXX: There doesn't seem to be a way to discover original file extension (?)
@@ -144,10 +148,11 @@ class FlickrBackup(object):
         else:
             filename = photo.id + "." + photo.original_format
 
-        # Create a photo set directory from the first set the photo is a member of
-        photo_sets = self.get_photo_sets(photo)
-        if len(photo_sets) > 0:
-            dirname = self.get_set_directory(photo_sets[0])
+        if not self.favorites:
+            # Create a photo set directory from the first set the photo is a member of
+            photo_sets = self.get_photo_sets(photo)
+            if len(photo_sets) > 0:
+                dirname = self.get_set_directory(photo_sets[0])
 
         dirname = self.get_date_directory(dirname, photo)
 
@@ -168,7 +173,7 @@ class FlickrBackup(object):
             logger.debug('Download of "%s" at %s to %s finished.', photo.title, photo.url, filepath)
 
         # Copy to additional set directories
-        if not self.store_once:
+        if not self.store_once and not self.favorites:
             for photo_set in photo_sets[1:]:
                 copy_dirname = self.get_set_directory(photo_set)
                 copy_dirname = self.get_date_directory(copy_dirname, photo)
@@ -210,7 +215,12 @@ class FlickrBackup(object):
                 raise
 
         while has_more_pages:
-            recently_updated = self.flickr_api.photos_recentlyUpdated(
+            recently_updated = self.flickr_api.favorites_getList(
+                min_fave_date=dateutil.parser.parse(min_date).strftime('%s'),
+                extras="description,url_o,media,original_format,date_upload,date_taken,tags,machine_tags",
+                per_page=500,
+                page=page
+            ).find('photos') if self.favorites else self.flickr_api.photos_recentlyUpdated(
                 min_date=min_date,
                 extras="description,url_o,media,original_format,date_upload,date_taken,tags,machine_tags",
                 per_page=500,
@@ -399,6 +409,7 @@ def main():
     parser.add_argument('-f', '--from', dest='from_date', help='Start date (YYYY-MM-DD)')
     parser.add_argument('-v', '--verbose', action='store_true', help='Log progress information')
     parser.add_argument('-o', '--store-once', action='store_true', help='Only store photos once, even if they appear in multiple sets')
+    parser.add_argument('--favorites', action='store_true', help='Download favorites instead of own photos. Implies --store-once and does not organise photos into folders based on sets.')
     parser.add_argument('-k', '--keep-existing', action='store_true', help='Keep existing photos (default is to replace in case they have changed)')
     parser.add_argument('-r', '--retry', type=int, default=1, help='Retry download of failed images N times default is to retry once)')
     parser.add_argument('-e', '--error-file', help='Append ids of erroneous items to this file, to allow retry later')
@@ -476,6 +487,7 @@ def main():
         backup = FlickrBackup(destination,
                 store_once=arguments.store_once,
                 keep_existing=arguments.keep_existing,
+                favorites=arguments.favorites,
                 retry=arguments.retry,
                 verbose=arguments.verbose
             )
