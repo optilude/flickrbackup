@@ -36,7 +36,7 @@ class Photo(object):
         media='photo', farm=None, server=None,
         title=None, description=None, date_taken=None,
         is_public=None, is_friend=None, is_family=None,
-        tags=None, url_o=None, flickr_usernsid=None,
+        tags=None, url_o=None, url_l=None, flickr_usernsid=None,
     ):
         self.id = id
         self.original_secret = original_secret
@@ -52,12 +52,15 @@ class Photo(object):
         self.is_family = is_family
         self.tags = tags
         self._url_o = url_o
+        self._url_l = url_l
         self.flickr_usernsid = flickr_usernsid
 
     @property
     def url(self):
         if self._url_o:
             return self._url_o
+        elif self._url_l:
+            return self._url_l
         elif self.media == 'video':
             return "http://www.flickr.com/photos/%s/%s/play/orig/%s" % (self.flickr_usernsid, self.id, self.original_secret)
         else:
@@ -99,7 +102,8 @@ class Photo(object):
                 is_family=info.get('isfamily') == '1',
                 tags=info.get('tags').split(' '),
                 flickr_usernsid=info.get('owner') or flickr_usernsid,
-                url_o=info.get('url_o')
+                url_o=info.get('url_o'),
+                url_l=info.get('url_l'),
             )
 
 
@@ -333,7 +337,7 @@ class FlickrBackup(object):
 
     def normalize_filename(self, filename):
         # Take a rather liberal approach to what's an allowable filename
-        return re.sub('[^\w\-_\. \?\'!]', '_', filename)
+        return re.sub(r'[^\w\-_\. \?\'!]', '_', filename)
         #return filename.replace(os.path.sep, '').encode('ascii', 'xmlcharrefreplace').decode('ascii')
 
     def get_set_directory(self, set_info):

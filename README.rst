@@ -76,6 +76,12 @@ Later, we can attempt to manually re-process just these photos using the
 If this succeeds, you should delete ``errors.txt``, since the ``-e`` option
 will always append to, not replace, this file.
 
+As of version 0.10 it is also possible to download the authenticated user'
+favorite photos (which could be uploaded by another user). In this case,
+files are always organised by date and not set::
+
+    $ flickrbackup.py --favorites /path/to/faves
+
 To see further help, run::
 
     $ flickrbackup.py --help
