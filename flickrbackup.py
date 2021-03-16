@@ -71,7 +71,7 @@ class Photo(object):
         return Photo(
                 id=info.get('id'),
                 original_secret=info.get('originalsecret'),
-                original_format=info.get('originalformat'),
+                original_format=info.get('originalformat') or "jpg",
                 media=info.get('media'),
                 farm=info.get('farm'),
                 server=info.get('server'),
@@ -90,7 +90,7 @@ class Photo(object):
         return Photo(
                 id=info.get('id'),
                 original_secret=info.get('originalsecret'),
-                original_format=info.get('originalformat'),
+                original_format=info.get('originalformat') or "jpg",
                 media=info.get('media'),
                 farm=info.get('farm'),
                 server=info.get('server'),
@@ -109,7 +109,7 @@ class Photo(object):
 
 class FlickrBackup(object):
 
-    def __init__(self, destination, store_once=False, keep_existing=False, favorites=False, retry=1, verbose=False, threadpoolsize=7):
+    def __init__(self, destination, store_once=False, keep_existing=False, favorites=False, retry=1, verbose=False, token_cache=None, threadpoolsize=7):
         self.destination = destination
         self.store_once = store_once
         self.keep_existing = keep_existing
@@ -117,6 +117,7 @@ class FlickrBackup(object):
         self.max_retries = retry
         self.verbose = verbose
         self.threadpoolsize = threadpoolsize
+        self.token_cache = token_cache
 
         # Initialise connection to Flickr
         self.flickr_api, self.flickr_usernsid = self.retrieve_flickr_token()
@@ -309,7 +310,7 @@ class FlickrBackup(object):
     # Helpers
 
     def retrieve_flickr_token(self):
-        flickr_api = flickrapi.FlickrAPI(FLICKR_API_KEY, FLICKR_API_SECRET)
+        flickr_api = flickrapi.FlickrAPI(FLICKR_API_KEY, FLICKR_API_SECRET, token_cache_location=self.token_cache)
 
         # Make sure the token is still valid if we have one
         if flickr_api.token_cache.token:
@@ -419,6 +420,7 @@ def main():
     parser.add_argument('-e', '--error-file', help='Append ids of erroneous items to this file, to allow retry later')
     parser.add_argument('-d', '--download', metavar='FILE', help='Attempt to download the photos with the ids in the given file, one per line (usually saved by the --error-file option)')
     parser.add_argument('-l', '--log-file', help='Log warnings and errors to the given file')
+    parser.add_argument('--token-cache', dest='token_cache', help="Path to a directory where the login token data will be stored. Must be secure. Defaults to ~/.flickr")
     parser.add_argument('destination', help='Destination directory')
 
     arguments = parser.parse_args()
@@ -493,7 +495,8 @@ def main():
                 keep_existing=arguments.keep_existing,
                 favorites=arguments.favorites,
                 retry=arguments.retry,
-                verbose=arguments.verbose
+                verbose=arguments.verbose,
+                token_cache=arguments.token_cache
             )
         success = backup.run(from_date, arguments.error_file)
 
