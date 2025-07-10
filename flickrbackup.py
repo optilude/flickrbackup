@@ -284,7 +284,15 @@ class FlickrBackup(object):
         logger.info("Processing %d photos", len(ids))
 
         for id in ids:
-            item = self.flickr_api.photos_getInfo(photo_id=id)
+            item = None
+
+            try:
+                item = self.flickr_api.photos_getInfo(photo_id=id)
+            except:
+                logger.exception("An unexpected error occurred getting info for photo id %s", id)
+                items_with_errors.append(photo)
+                continue
+            
             # Decorate with the Photo class
             photo = Photo.fromInfo(item.find('photo'), flickr_usernsid=self.flickr_usernsid)
 
