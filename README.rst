@@ -104,6 +104,11 @@ you need to, you can delete this file to force re-authorization.
 Changelog
 ---------
 
+Version 0.10.2, released 2025-07-10
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Make the downloader more resilient to missing files
+
 Version 0.9.1, released 2019-08-15
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
