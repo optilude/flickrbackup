@@ -1,4 +1,10 @@
 from setuptools import setup, find_packages
+
+import os
+here = os.path.abspath(os.path.dirname(__file__))
+with open(os.path.join(here, 'README.rst'), encoding='utf-8') as f:
+    long_description = f.read()
+
 setup(
     name="flickrbackup",
     version="0.10.2",
@@ -14,7 +20,7 @@ setup(
     author="Martin Aspeli",
     author_email="optilude@gmail.com",
     description="Flickr backup utility",
-    long_description=open('README.rst').read(),
+    long_description=long_description,
     long_description_content_type="text/x-rst",
     license="BSD",
     keywords="flickr backup",
