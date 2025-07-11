@@ -24,7 +24,6 @@ FLICKR_API_SECRET = "32cb192e3b9c43e6"
 METADATA_EXTENSION = 'txt'
 STAMP_FILENAME = '.stamp'
 
-THREADED = True  # Turn off for easier debugging
 dirlock = threading.RLock()
 
 logger = logging.getLogger('flickrbackup')
@@ -109,7 +108,7 @@ class Photo(object):
 
 class FlickrBackup(object):
 
-    def __init__(self, destination, store_once=False, keep_existing=False, favorites=False, retry=1, verbose=False, token_cache=None, threadpoolsize=7):
+    def __init__(self, destination, store_once=False, keep_existing=False, favorites=False, retry=1, verbose=False, token_cache=None, threaded=True, threadpoolsize=7):
         self.destination = destination
         self.store_once = store_once
         self.keep_existing = keep_existing
@@ -118,6 +117,7 @@ class FlickrBackup(object):
         self.verbose = verbose
         self.threadpoolsize = threadpoolsize
         self.token_cache = token_cache
+        self.threaded = threaded
 
         # Initialise connection to Flickr
         self.flickr_api, self.flickr_usernsid = self.retrieve_flickr_token()
@@ -216,7 +216,7 @@ class FlickrBackup(object):
                 self.download_photo(photo)
             except Exception:
                 logger.exception("An unexpected error occurred downloading %s (%s)" % (photo.title, photo.id,))
-                items_with_errors.append(photo)
+                items_with_errors.append((photo.id, photo,))
                 raise
 
         while has_more_pages:
@@ -245,7 +245,7 @@ class FlickrBackup(object):
                 # Decorate with the Photo class
                 photo = Photo.fromSearchResult(item, flickr_usernsid=self.flickr_usernsid)
 
-                if THREADED:
+                if self.threaded:
                     req = threadpool.WorkRequest(threaded_download, [photo], {})
                     thread_pool.putRequest(req)
                 else:
@@ -253,7 +253,7 @@ class FlickrBackup(object):
                         self.download_photo(photo)
                     except:
                         logger.exception("An unexpected error occurred downloading %s (%s)" % (photo.title, photo.id,))
-                        items_with_errors.append(photo)
+                        items_with_errors.append((photo.id, photo,))
 
         thread_pool.wait()
 
@@ -278,7 +278,7 @@ class FlickrBackup(object):
                 self.download_photo(photo)
             except Exception:
                 logger.exception("An unexpected error occurred downloading %s (%s)", photo.title, photo.id)
-                items_with_errors.append(photo)
+                items_with_errors.append((photo.id, photo))
                 raise
 
         logger.info("Processing %d photos", len(ids))
@@ -290,13 +290,12 @@ class FlickrBackup(object):
                 item = self.flickr_api.photos_getInfo(photo_id=id)
             except:
                 logger.exception("An unexpected error occurred getting info for photo id %s", id)
-                items_with_errors.append(photo)
+                items_with_errors.append((id, None,))
                 continue
             
-            # Decorate with the Photo class
             photo = Photo.fromInfo(item.find('photo'), flickr_usernsid=self.flickr_usernsid)
 
-            if THREADED:
+            if self.threaded:
                 req = threadpool.WorkRequest(threaded_download, [photo], {})
                 thread_pool.putRequest(req)
             else:
@@ -304,7 +303,7 @@ class FlickrBackup(object):
                     self.download_photo(photo)
                 except:
                     logger.exception("An unexpected error occurred downloading %s (%s)", photo.title, photo.id)
-                    items_with_errors.append(photo)
+                    items_with_errors.append((id, photo,))
 
         thread_pool.wait()
 
@@ -386,23 +385,28 @@ class FlickrBackup(object):
             retry_count += 1
 
             still_in_error = []
-            for photo in items_with_errors:
-                try:
-                    self.download_photo(photo)
-                except:
-                    logger.exception("An unexpected error occurred downloading %s (%s)", photo.title, photo.id)
-                    still_in_error.append(photo)
+            for id, photo in items_with_errors:
+                if photo is not None:
+                    try:
+                        self.download_photo(photo)
+                    except:
+                        logger.exception("An unexpected error occurred downloading %s (%s)", photo.title, photo.id)
+                        still_in_error.append((id, photo,))
             items_with_errors = still_in_error
 
             if not items_with_errors:
                 break
 
         if items_with_errors:
-            logger.error("Download of the following items did not succeed, even after %d retries: %s", self.max_retries, ' '.join([photo.id for photo in items_with_errors]))
+            logger.error(
+                "Download of the following items did not succeed, even after %d retries: %s",
+                self.max_retries,
+                ' '.join([str(id) for id, _ in items_with_errors])
+            )
             if error_file:
                 with open(error_file, 'a') as ef:
-                    for photo in items_with_errors:
-                        print(photo.id, file=ef)
+                    for id, _ in items_with_errors:
+                        print(id, file=ef)
 
             return False
 
@@ -424,11 +428,12 @@ def main():
     parser.add_argument('-o', '--store-once', action='store_true', help='Only store photos once, even if they appear in multiple sets')
     parser.add_argument('--favorites', action='store_true', help='Download favorites instead of own photos. Implies --store-once and does not organise photos into folders based on sets.')
     parser.add_argument('-k', '--keep-existing', action='store_true', help='Keep existing photos (default is to replace in case they have changed)')
-    parser.add_argument('-r', '--retry', type=int, default=1, help='Retry download of failed images N times default is to retry once)')
+    parser.add_argument('-r', '--retry', type=int, default=1, help='Retry download of failed images N times (default is to retry once)')
     parser.add_argument('-e', '--error-file', help='Append ids of erroneous items to this file, to allow retry later')
     parser.add_argument('-d', '--download', metavar='FILE', help='Attempt to download the photos with the ids in the given file, one per line (usually saved by the --error-file option)')
     parser.add_argument('-l', '--log-file', help='Log warnings and errors to the given file')
     parser.add_argument('--token-cache', dest='token_cache', help="Path to a directory where the login token data will be stored. Must be secure. Defaults to ~/.flickr")
+    parser.add_argument('--single-threaded', action='store_false', dest='threaded', help='Run in single-threaded mode (for debugging purposes)')
     parser.add_argument('destination', help='Destination directory')
 
     arguments = parser.parse_args()
@@ -474,7 +479,9 @@ def main():
                 store_once=arguments.store_once,
                 keep_existing=arguments.keep_existing,
                 retry=arguments.retry,
-                verbose=arguments.verbose
+                verbose=arguments.verbose,
+                token_cache=arguments.token_cache,
+                threaded=arguments.threaded
             )
         success = backup.download(ids, arguments.error_file)
 
@@ -504,7 +511,8 @@ def main():
                 favorites=arguments.favorites,
                 retry=arguments.retry,
                 verbose=arguments.verbose,
-                token_cache=arguments.token_cache
+                token_cache=arguments.token_cache,
+                threaded=arguments.threaded,
             )
         success = backup.run(from_date, arguments.error_file)
 

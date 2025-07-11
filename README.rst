@@ -104,10 +104,12 @@ you need to, you can delete this file to force re-authorization.
 Changelog
 ---------
 
-Version 0.10.2, released 2025-07-10
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Version 0.10.2, released 2025-07-11
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 * Make the downloader more resilient to missing files
+* Add new `--single-threaded` option to disable threading for easier debugging
+* Fix a defect whereby "download" mode would not correctly use the `--token-cache` option
 
 Version 0.9.1, released 2019-08-15
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
