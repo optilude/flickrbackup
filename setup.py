@@ -15,6 +15,7 @@ setup(
     author_email="optilude@gmail.com",
     description="Flickr backup utility",
     long_description=open('README.rst').read(),
+    long_description_content_type="text/x-rst",
     license="BSD",
     keywords="flickr backup",
     url="http://github.com/optilude/flickrbackup",
