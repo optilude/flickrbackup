@@ -558,7 +558,8 @@ def main():
             stamp.write(today)
 
     if not success:
-        sys.exit(1)
+        logger.info("Done, with errors.")
+        sys.exit(2)
 
     logger.info("Done")
 

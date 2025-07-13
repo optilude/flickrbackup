@@ -104,8 +104,14 @@ you need to, you can delete this file to force re-authorization.
 Changelog
 ---------
 
+Version 0.11.1, released 2025-07-14
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Return exit status 2 if the script completed but some items had errors
+  (status 1 will still mean an unexpected error occurred)
+
 Version 0.11, released 2025-07-13
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 * Fix video image download issue (see below)
 * Improve logging of errors when Flickr flat out refuses to let you download a video
