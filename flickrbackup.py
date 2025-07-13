@@ -28,21 +28,38 @@ dirlock = threading.RLock()
 
 logger = logging.getLogger('flickrbackup')
 
+# TODO: Some video download links redirect to the CDN with a signed request but respond with a 404 Not Found
+# - It's unclear why this happens to some but not all videos
+# - The same base URLs (pre-redirect) seem to work in the browser when authenticated
+# - Need to test with a larger set of images and videos
+
+# XXX: This hack causes urllib to log all headers, which helps debug redirects
+# http_handler = urllib.request.HTTPHandler(debuglevel=1)
+# https_handler = urllib.request.HTTPSHandler(debuglevel=1)
+# opener = urllib.request.build_opener(http_handler, https_handler)
+# urllib.request.install_opener(opener)
+# /XXX
 
 class Photo(object):
 
-    def __init__(self, id, original_secret=None, original_format=None,
-        media='photo', farm=None, server=None,
-        title=None, description=None, date_taken=None,
-        is_public=None, is_friend=None, is_family=None,
-        tags=None, url_o=None, url_l=None, flickr_usernsid=None,
+    def __init__(self,
+        id,
+        url,
+        media='photo',
+        original_format='jpg',
+        title=None,
+        description=None,
+        date_taken=None,
+        is_public=None,
+        is_friend=None,
+        is_family=None,
+        tags=None,
+        flickr_usernsid=None,
     ):
         self.id = id
-        self.original_secret = original_secret
-        self.original_format = original_format
+        self.url = url
         self.media = media
-        self.farm = farm
-        self.server = server
+        self.original_format = original_format
         self.title = title
         self.description = description
         self.date_taken = date_taken
@@ -50,30 +67,15 @@ class Photo(object):
         self.is_friend = is_friend
         self.is_family = is_family
         self.tags = tags
-        self._url_o = url_o
-        self._url_l = url_l
         self.flickr_usernsid = flickr_usernsid
 
-    @property
-    def url(self):
-        if self._url_o:
-            return self._url_o
-        elif self._url_l:
-            return self._url_l
-        elif self.media == 'video':
-            return "http://www.flickr.com/photos/%s/%s/play/orig/%s" % (self.flickr_usernsid, self.id, self.original_secret)
-        else:
-            return "http://farm%s.staticflickr.com/%s/%s_%s_o.%s" % (self.farm, self.server, self.id, self.original_secret, self.original_format)
-
     @classmethod
-    def fromInfo(cls, info, flickr_usernsid=None):
+    def fromInfo(cls, info, sizes, flickr_usernsid):
         return Photo(
                 id=info.get('id'),
-                original_secret=info.get('originalsecret'),
-                original_format=info.get('originalformat') or "jpg",
+                url=cls.findOriginalImageURL(info, sizes, flickr_usernsid),
                 media=info.get('media'),
-                farm=info.get('farm'),
-                server=info.get('server'),
+                original_format=info.get('originalformat') or "jpg",
                 title=info.find('title').text,
                 description=info.find('description').text,
                 date_taken=info.find('dates').get('taken'),
@@ -85,14 +87,12 @@ class Photo(object):
             )
 
     @classmethod
-    def fromSearchResult(cls, info, flickr_usernsid=None):
+    def fromSearchResult(cls, info, sizes, flickr_usernsid=None):
         return Photo(
                 id=info.get('id'),
-                original_secret=info.get('originalsecret'),
-                original_format=info.get('originalformat') or "jpg",
+                url=cls.findOriginalImageURL(info, sizes, flickr_usernsid),
                 media=info.get('media'),
-                farm=info.get('farm'),
-                server=info.get('server'),
+                original_format=info.get('originalformat') or "jpg",
                 title=info.get('title'),
                 description=info.find('description').text,
                 date_taken=info.get('datetaken'),
@@ -101,9 +101,26 @@ class Photo(object):
                 is_family=info.get('isfamily') == '1',
                 tags=info.get('tags').split(' '),
                 flickr_usernsid=info.get('owner') or flickr_usernsid,
-                url_o=info.get('url_o'),
-                url_l=info.get('url_l'),
             )
+
+    @classmethod
+    def findOriginalImageURL(cls, info, sizes, flickr_usernsid):
+        """Find the URL of the original image for downloading
+        """
+
+        media = info.get('media', 'photo')
+        url = None
+
+        if media == 'video':
+            for size in sizes.findall('size'):
+                if size.get('label') == 'Video Original':
+                    url = size.get('source')
+            if url is None:
+                url = "http://www.flickr.com/photos/%s/%s/play/orig/%s" % (flickr_usernsid, info.get('id'), info.get('originalsecret'),)
+        else:
+            url = info.get('url_o') or "http://farm%s.staticflickr.com/%s/%s_%s_o.%s" % (info.get('farm'), info.get('server'), info.get('id'), info.get('originalsecret'), info.get('originalformat') or 'jpg',)
+
+        return url
 
 
 class FlickrBackup(object):
@@ -243,7 +260,8 @@ class FlickrBackup(object):
 
             for item in recently_updated.findall('photo'):
                 # Decorate with the Photo class
-                photo = Photo.fromSearchResult(item, flickr_usernsid=self.flickr_usernsid)
+                sizes = self.flickr_api.photos_getSizes(photo_id=item.get('id'))
+                photo = Photo.fromSearchResult(item, sizes, flickr_usernsid=self.flickr_usernsid)
 
                 if self.threaded:
                     req = threadpool.WorkRequest(threaded_download, [photo], {})
@@ -251,6 +269,12 @@ class FlickrBackup(object):
                 else:
                     try:
                         self.download_photo(photo)
+                    except urllib.error.HTTPError as e:
+                        if e.code == 404:
+                            logger.warning("Photo %s (%s) not found at %s. This normally means the file has to be manually downlaoded through a web browser.", photo.title, photo.id, photo.url)
+                        else:
+                            logger.exception("An unexpected HTTP error occurred downloading %s (%s) from %s", photo.title, photo.id, photo.url)
+                        items_with_errors.append((photo.id, photo,))
                     except:
                         logger.exception("An unexpected error occurred downloading %s (%s)" % (photo.title, photo.id,))
                         items_with_errors.append((photo.id, photo,))
@@ -288,12 +312,13 @@ class FlickrBackup(object):
 
             try:
                 item = self.flickr_api.photos_getInfo(photo_id=id)
+                sizes = self.flickr_api.photos_getSizes(photo_id=id)
             except:
                 logger.exception("An unexpected error occurred getting info for photo id %s", id)
                 items_with_errors.append((id, None,))
                 continue
             
-            photo = Photo.fromInfo(item.find('photo'), flickr_usernsid=self.flickr_usernsid)
+            photo = Photo.fromInfo(item.find('photo'), sizes.find('sizes'), flickr_usernsid=self.flickr_usernsid)
 
             if self.threaded:
                 req = threadpool.WorkRequest(threaded_download, [photo], {})
@@ -301,6 +326,12 @@ class FlickrBackup(object):
             else:
                 try:
                     self.download_photo(photo)
+                except urllib.error.HTTPError as e:
+                        if e.code == 404:
+                            logger.warning("Photo %s (%s) not found at %s. This normally means the file has to be manually downlaoded through a web browser.", photo.title, photo.id, photo.url)
+                        else:
+                            logger.exception("An unexpected HTTP error occurred downloading %s (%s) from %s", photo.title, photo.id, photo.url)
+                        items_with_errors.append((photo.id, photo,))
                 except:
                     logger.exception("An unexpected error occurred downloading %s (%s)", photo.title, photo.id)
                     items_with_errors.append((id, photo,))
@@ -389,6 +420,12 @@ class FlickrBackup(object):
                 if photo is not None:
                     try:
                         self.download_photo(photo)
+                    except urllib.error.HTTPError as e:
+                        if e.code == 404:
+                            logger.warning("Photo %s (%s) not found at %s. This normally means the file has to be manually downlaoded through a web browser.", photo.title, photo.id, photo.url)
+                        else:
+                            logger.exception("An unexpected HTTP error occurred downloading %s (%s) from %s", photo.title, photo.id, photo.url)
+                        still_in_error.append((photo.id, photo,))
                     except:
                         logger.exception("An unexpected error occurred downloading %s (%s)", photo.title, photo.id)
                         still_in_error.append((id, photo,))
@@ -473,7 +510,7 @@ def main():
 
         logger.info("Running backup of images found in %s", arguments.download)
         with open(arguments.download, 'r') as f:
-            ids = [id.strip() for id in f.readlines()]
+            ids = [id.strip() for id in f.readlines() if id.strip() and not id.strip().startswith('#')]
 
         backup = FlickrBackup(destination,
                 store_once=arguments.store_once,

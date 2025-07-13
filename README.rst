@@ -104,6 +104,43 @@ you need to, you can delete this file to force re-authorization.
 Changelog
 ---------
 
+Version 0.11, released 2025-07-13
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Fix video image download issue (see below)
+* Improve logging of errors when Flickr flat out refuses to let you download a video
+
+**NOTICE**: It is likely that previous versions of ``flickrbackup`` incorrectly
+downloaded videos as images. That is, the ``.mov`` file might contain an image
+(a thumbnail) rather than the video itself. This has now been fixed, but you
+may need to re-download the affected videos. If you have a lot of files, this
+could be tricky. The following Bash shell commands can help you identify which
+images are suspicious:
+
+.. code-block:: bash
+
+  # Go to the root of the directory where flickrbackup will have downloaded its files
+  $ cd /backups/directory
+
+  # Run the following command from this directory, all in one go
+  $ find . -type f -name "*.mov" | while read -r filepath; do
+    mimetype=$(file --mime-type -b "$filepath")
+    if [[ "$mimetype" != video/* ]]; then
+      id=$(basename "$filepath" .mov)
+      size=$(du -h "$filepath" | cut -f1)
+      echo "$id,$filepath,$size"
+    fi
+  done | tee movie_files.csv
+
+  # This will create a file named `movie_files.csv` in the current directory
+  # that shows files, path, and sizes of videos with the wrong MIME type.
+  
+  # If you want to re-download all these files, do the following:
+  $ cat movie_files.csv | cut -d',' -f1 > redownload_movies.txt
+  $ flickrbackup.py --download redownload_movies.txt <other options> .
+
+Please make sure the ``file`` utility is installed on your system.
+
 Version 0.10.3, released 2025-07-11
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

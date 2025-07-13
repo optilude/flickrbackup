@@ -13,3 +13,4 @@ photos
 dist
 share
 pip-selfcheck.json
+test/
