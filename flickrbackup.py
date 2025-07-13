@@ -271,7 +271,7 @@ class FlickrBackup(object):
                         self.download_photo(photo)
                     except urllib.error.HTTPError as e:
                         if e.code == 404:
-                            logger.warning("Photo %s (%s) not found at %s. This normally means the file has to be manually downlaoded through a web browser.", photo.title, photo.id, photo.url)
+                            logger.warning("Photo %s (%s) not found at %s. This normally means the file has to be manually downloaded through a web browser.", photo.title, photo.id, photo.url)
                         else:
                             logger.exception("An unexpected HTTP error occurred downloading %s (%s) from %s", photo.title, photo.id, photo.url)
                         items_with_errors.append((photo.id, photo,))
@@ -328,7 +328,7 @@ class FlickrBackup(object):
                     self.download_photo(photo)
                 except urllib.error.HTTPError as e:
                         if e.code == 404:
-                            logger.warning("Photo %s (%s) not found at %s. This normally means the file has to be manually downlaoded through a web browser.", photo.title, photo.id, photo.url)
+                            logger.warning("Photo %s (%s) not found at %s. This normally means the file has to be manually downloaded through a web browser.", photo.title, photo.id, photo.url)
                         else:
                             logger.exception("An unexpected HTTP error occurred downloading %s (%s) from %s", photo.title, photo.id, photo.url)
                         items_with_errors.append((photo.id, photo,))
@@ -422,7 +422,7 @@ class FlickrBackup(object):
                         self.download_photo(photo)
                     except urllib.error.HTTPError as e:
                         if e.code == 404:
-                            logger.warning("Photo %s (%s) not found at %s. This normally means the file has to be manually downlaoded through a web browser.", photo.title, photo.id, photo.url)
+                            logger.warning("Photo %s (%s) not found at %s. This normally means the file has to be manually downloaded through a web browser.", photo.title, photo.id, photo.url)
                         else:
                             logger.exception("An unexpected HTTP error occurred downloading %s (%s) from %s", photo.title, photo.id, photo.url)
                         still_in_error.append((photo.id, photo,))
