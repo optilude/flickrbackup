@@ -28,6 +28,18 @@ dirlock = threading.RLock()
 
 logger = logging.getLogger('flickrbackup')
 
+# Configure default logging format - keep root logger at INFO to avoid debug spam from libraries
+logging.basicConfig(
+    format='%(message)s',
+    level=logging.INFO
+)
+
+# Prevent our logger from propagating to avoid duplicate messages
+logger.propagate = False
+
+# Suppress noisy logging from flickrapi
+logging.getLogger('flickrapi').setLevel(logging.WARNING)
+
 # TODO: Some video download links redirect to the CDN with a signed request but respond with a 404 Not Found
 # - It's unclear why this happens to some but not all videos
 # - The same base URLs (pre-redirect) seem to work in the browser when authenticated
@@ -159,7 +171,7 @@ class FlickrBackup(object):
                 if diff >= -(blocksize / 2) and diff <= (blocksize / 2):
                     downloaded_so_far = float(count * blocksize) / 1024.0 / 1024.0
                     total_size_in_mb = float(totalsize) / 1024.0 / 1024.0
-                    print("Photo: %s --- %i%% - %.1f/%.1fmb" % (photo.title, res, downloaded_so_far, total_size_in_mb))
+                    print(f"Photo: {photo.title} --- {res}% - {downloaded_so_far:.1f}/{total_size_in_mb:.1f}mb")
 
         dirname = self.destination
         photo_sets = []
@@ -179,7 +191,7 @@ class FlickrBackup(object):
         dirname = self.get_date_directory(dirname, photo)
 
         # Download
-        logger.debug('Processing photo "%s" at url "%s".', photo.title, photo.url)
+        logger.debug(f'Processing photo "{photo.title}" at url "{photo.url}"')
 
         filepath = os.path.join(dirname, filename)
 
@@ -192,7 +204,7 @@ class FlickrBackup(object):
                 tmp_filename, _ = urllib.request.urlretrieve(photo.url, tmp_filename, download_callback)
                 os.close(tmp_fd)
                 shutil.move(tmp_filename, filepath)
-                logger.debug('Download of "%s" at %s to %s finished.', photo.title, photo.url, filepath)
+                logger.debug(f'Download of "{photo.title}" at {photo.url} to {filepath} finished')
             except urllib.error.HTTPError as e:
                 os.close(tmp_fd)
                 os.unlink(tmp_filename)
@@ -226,10 +238,7 @@ class FlickrBackup(object):
                         shutil.copyfile(filepath, copy_filepath)
                     if metadata_exists:
                         shutil.copyfile(filepath + "." + METADATA_EXTENSION, copy_filepath + "." + METADATA_EXTENSION)
-                    logger.debug('Photo "%s" metadata%s copied to %s', 
-                               photo.title,
-                               " and image" if image_exists else "",
-                               copy_filepath)
+                    logger.debug(f'Photo "{photo.title}" metadata{" and image" if image_exists else ""} copied to {copy_filepath}')
 
         # Give visual feedback in the console, but don't log
         if not self.verbose:
@@ -382,7 +391,7 @@ class FlickrBackup(object):
         dirname = os.path.join(self.destination, self.normalize_filename(set_info.get('title')))
         with dirlock:
             if not os.path.exists(dirname):
-                logger.debug("Creating directory %s", dirname)
+                logger.debug(f"Creating directory {dirname}")
                 os.mkdir(dirname)
         return dirname
 
@@ -450,9 +459,9 @@ class FlickrBackup(object):
             self.download_photo(photo)
         except urllib.error.HTTPError as e:
             if e.code == 404:
-                logger.warning("Photo %s (%s) not found at %s. Normally this means Flickr will not allow it to be downloaded. The metadata file (%s.%s) has been written and contains a record of the URL.", photo.title, photo.id, photo.url, photo.id, METADATA_EXTENSION)
+                logger.warning(f"Photo {photo.title} ({photo.id}) not found at {photo.url}. Normally this means Flickr will not allow it to be downloaded. The metadata file ({photo.id}.{METADATA_EXTENSION}) has been written and contains a record of the URL")
             else:
-                logger.exception("An unexpected HTTP error occurred downloading %s (%s) from %s", photo.title, photo.id, photo.url)
+                logger.exception(f"An unexpected HTTP error occurred downloading {photo.title} ({photo.id}) from {photo.url}")
             items_with_errors.append((photo.id, photo,))
         except Exception:
             logger.exception("An unexpected error occurred downloading %s (%s)", photo.title, photo.id)
@@ -487,26 +496,29 @@ def main():
     success = False
 
     # Setup logging
+    log_level = logging.DEBUG if arguments.verbose else logging.INFO
+    logger.setLevel(log_level)
 
-    if arguments.verbose:
-        logger.setLevel(logging.DEBUG)
-    else:
-        logger.setLevel(logging.INFO)
-
-    logger.propagate = False
-
-    # Console logging
-    console_log_handler = logging.StreamHandler()
-    console_log_formatter = logging.Formatter('%(message)s')
-    console_log_handler.setFormatter(console_log_formatter)
-    logger.addHandler(console_log_handler)
-
-    # File logging
+    # Configure handlers
+    handlers = []
+    
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter('%(message)s'))
+    handlers.append(console_handler)
+    
+    # File handler if requested
     if arguments.log_file:
-        file_log_handler = logging.FileHandler(arguments.log_file)
-        file_log_formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s', "%Y-%m-%d %H:%M:%S")
-        file_log_handler.setFormatter(file_log_formatter)
-        logger.addHandler(file_log_handler)
+        file_handler = logging.FileHandler(arguments.log_file)
+        file_handler.setFormatter(
+            logging.Formatter('%(asctime)s %(levelname)s %(message)s', "%Y-%m-%d %H:%M:%S")
+        )
+        handlers.append(file_handler)
+    
+    # Clear any existing handlers and add new ones
+    logger.handlers.clear()
+    for handler in handlers:
+        logger.addHandler(handler)
 
     # Run
 
