@@ -110,6 +110,11 @@ Version 0.11.3, released 2025-07-15
 * Write the download url to the metadata file, to make it easier to manually
   download files that flickrbackup could not download (e.g. due to a 404 error)
 
+Version 0.11.2, released 2025-07-14
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Fix a typo in an error message
+
 Version 0.11.1, released 2025-07-14
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
