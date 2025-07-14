@@ -28,8 +28,6 @@ dirlock = threading.RLock()
 
 logger = logging.getLogger('flickrbackup')
 
-# TODO: Put 404 error handling into `download_photo`
-# TODO: Make sure new 404 error logging works with threaded downloads too
 # TODO: Ensure metadata is written even if the download gets a 404 (but not for other errors)
 
 # TODO: Some video download links redirect to the CDN with a signed request but respond with a 404 Not Found
@@ -288,8 +286,6 @@ class FlickrBackup(object):
         items_with_errors = []
         thread_pool = threadpool.ThreadPool(self.threadpoolsize)
 
-
-
         logger.info("Processing %d photos", len(ids))
 
         for id in ids:
@@ -398,17 +394,7 @@ class FlickrBackup(object):
             still_in_error = []
             for id, photo in items_with_errors:
                 if photo is not None:
-                    try:
-                        self.download_photo(photo)
-                    except urllib.error.HTTPError as e:
-                        if e.code == 404:
-                            logger.warning("Photo %s (%s) not found at %s. This normally means the file has to be manually downloaded through a web browser.", photo.title, photo.id, photo.url)
-                        else:
-                            logger.exception("An unexpected HTTP error occurred downloading %s (%s) from %s", photo.title, photo.id, photo.url)
-                        still_in_error.append((photo.id, photo,))
-                    except:
-                        logger.exception("An unexpected error occurred downloading %s (%s)", photo.title, photo.id)
-                        still_in_error.append((id, photo,))
+                    self._initiate_download(photo, still_in_error)
             items_with_errors = still_in_error
 
             if not items_with_errors:
@@ -447,8 +433,6 @@ class FlickrBackup(object):
         except Exception:
             logger.exception("An unexpected error occurred downloading %s (%s)", photo.title, photo.id)
             items_with_errors.append((photo.id, photo,))
-            raise
-
 
 #
 # CLI
