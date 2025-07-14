@@ -28,6 +28,11 @@ dirlock = threading.RLock()
 
 logger = logging.getLogger('flickrbackup')
 
+# TODO: Factor out `threaded_download` 
+# TODO: Put 404 error handling into `download_photo`
+# TODO: Make sure new 404 error logging works with threaded downloads too
+# TODO: Ensure metadata is written even if the download gets a 404 (but not for other errors)
+
 # TODO: Some video download links redirect to the CDN with a signed request but respond with a 404 Not Found
 # - It's unclear why this happens to some but not all videos
 # - The same base URLs (pre-redirect) seem to work in the browser when authenticated
@@ -408,6 +413,7 @@ class FlickrBackup(object):
             print("family = %s" % ("yes" if photo.is_family else "no"), file=f)
             print("taken = %s" % photo.date_taken, file=f)
             print("tags = %s" % ' '.join(photo.tags), file=f)
+            print("url = %s" % photo.url, file=f)
 
     def retry(self, items_with_errors, error_file=None):
         retry_count = 0
