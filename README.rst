@@ -109,6 +109,9 @@ Version 0.11.3, released 2025-07-15
 
 * Write the download url to the metadata file, to make it easier to manually
   download files that flickrbackup could not download (e.g. due to a 404 error)
+* Save metadata files even if the download fails with a 404 error. This, plus
+  logging that indicates when this happens, should make it possible to manually
+  download videos that Flickr refuses to let the script download.
 
 Version 0.11.2, released 2025-07-14
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

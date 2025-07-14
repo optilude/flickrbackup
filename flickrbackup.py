@@ -28,8 +28,6 @@ dirlock = threading.RLock()
 
 logger = logging.getLogger('flickrbackup')
 
-# TODO: Ensure metadata is written even if the download gets a 404 (but not for other errors)
-
 # TODO: Some video download links redirect to the CDN with a signed request but respond with a 404 Not Found
 # - It's unclear why this happens to some but not all videos
 # - The same base URLs (pre-redirect) seem to work in the browser when authenticated
@@ -189,15 +187,34 @@ class FlickrBackup(object):
             logger.debug('Image "%s" at %s already exists.', photo.title, filepath)
         else:
             tmp_fd, tmp_filename = tempfile.mkstemp()
-            tmp_filename, _ = urllib.request.urlretrieve(photo.url, tmp_filename, download_callback)
-            os.close(tmp_fd)
-            shutil.move(tmp_filename, filepath)
-
+            download_404 = False
+            try:
+                tmp_filename, _ = urllib.request.urlretrieve(photo.url, tmp_filename, download_callback)
+                os.close(tmp_fd)
+                shutil.move(tmp_filename, filepath)
+                logger.debug('Download of "%s" at %s to %s finished.', photo.title, photo.url, filepath)
+            except urllib.error.HTTPError as e:
+                os.close(tmp_fd)
+                os.unlink(tmp_filename)
+                if e.code == 404:
+                    # For 404 errors, just set the flag and continue
+                    download_404 = True
+                    logger.warning("Photo %s (%s) not found at %s. Will write metadata only.", photo.title, photo.id, photo.url)
+                else:
+                    raise
+            except:
+                os.close(tmp_fd)
+                os.unlink(tmp_filename)
+                raise
+            
+            # Write metadata for both successful downloads and 404s
             self.write_metadata(filepath, photo)
-            logger.debug('Download of "%s" at %s to %s finished.', photo.title, photo.url, filepath)
 
         # Copy to additional set directories
         if not self.store_once and not self.favorites:
+            metadata_exists = os.path.exists(filepath + "." + METADATA_EXTENSION)
+            image_exists = os.path.exists(filepath)
+            
             for photo_set in photo_sets[1:]:
                 copy_dirname = self.get_set_directory(photo_set)
                 copy_dirname = self.get_date_directory(copy_dirname, photo)
@@ -206,13 +223,21 @@ class FlickrBackup(object):
                 if self.keep_existing and os.path.exists(copy_filepath):
                     logger.debug('Image "%s" at %s already exists.', photo.title, filepath)
                 elif filepath != copy_filepath:
-                    shutil.copyfile(filepath, copy_filepath)
-                    shutil.copyfile(filepath + "." + METADATA_EXTENSION, copy_filepath + "." + METADATA_EXTENSION)
-                    logger.debug('Photo "%s" also copied to %s', photo.title, copy_filepath)
+                    if image_exists:
+                        shutil.copyfile(filepath, copy_filepath)
+                    if metadata_exists:
+                        shutil.copyfile(filepath + "." + METADATA_EXTENSION, copy_filepath + "." + METADATA_EXTENSION)
+                    logger.debug('Photo "%s" metadata%s copied to %s', 
+                               photo.title,
+                               " and image" if image_exists else "",
+                               copy_filepath)
 
         # Give visual feedback in the console, but don't log
         if not self.verbose:
             print(photo.id)
+
+        if download_404:
+            raise urllib.error.HTTPError(photo.url, 404, "Not Found", None, None)
 
         return True
 
