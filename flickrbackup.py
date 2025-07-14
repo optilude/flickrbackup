@@ -4,6 +4,7 @@
 
 import os
 import os.path
+from pathlib import Path
 import re
 import shutil
 import datetime
@@ -128,9 +129,9 @@ class Photo(object):
                 if size.get('label') == 'Video Original':
                     url = size.get('source')
             if url is None:
-                url = "http://www.flickr.com/photos/%s/%s/play/orig/%s" % (flickr_usernsid, info.get('id'), info.get('originalsecret'),)
+                url = f"http://www.flickr.com/photos/{flickr_usernsid}/{info.get('id')}/play/orig/{info.get('originalsecret')}"
         else:
-            url = info.get('url_o') or "http://farm%s.staticflickr.com/%s/%s_%s_o.%s" % (info.get('farm'), info.get('server'), info.get('id'), info.get('originalsecret'), info.get('originalformat') or 'jpg',)
+            url = info.get('url_o') or f"http://farm{info.get('farm')}.staticflickr.com/{info.get('server')}/{info.get('id')}_{info.get('originalsecret')}_o.{info.get('originalformat') or 'jpg'}"
 
         return url
 
@@ -253,8 +254,8 @@ class FlickrBackup(object):
         """Run a backup of all photos taken since min_date
         """
 
-        if not os.path.exists(self.destination):
-            os.mkdir(self.destination)
+        dest_path = Path(self.destination)
+        dest_path.mkdir(exist_ok=True)
 
         items_with_errors = []
         thread_pool = threadpool.ThreadPool(self.threadpoolsize)
@@ -313,8 +314,8 @@ class FlickrBackup(object):
         """Download photos with the given ids
         """
 
-        if not os.path.exists(self.destination):
-            os.mkdir(self.destination)
+        dest_path = Path(self.destination)
+        dest_path.mkdir(exist_ok=True)
 
         items_with_errors = []
         thread_pool = threadpool.ThreadPool(self.threadpoolsize)
@@ -371,7 +372,7 @@ class FlickrBackup(object):
             flickr_api.get_request_token(oauth_callback='oob')  
             authorize_url = flickr_api.auth_url(perms='read')
 
-            print("No token found. You must visit this URL and get the verifier code: %s" % authorize_url)
+            print(f"No token found. You must visit this URL and get the verifier code: {authorize_url}")
             verifier = input('Enter code: ')
             flickr_api.get_access_token(verifier)
 
@@ -388,35 +389,34 @@ class FlickrBackup(object):
         #return filename.replace(os.path.sep, '').encode('ascii', 'xmlcharrefreplace').decode('ascii')
 
     def get_set_directory(self, set_info):
-        dirname = os.path.join(self.destination, self.normalize_filename(set_info.get('title')))
+        dirname = Path(self.destination) / self.normalize_filename(set_info.get('title'))
         with dirlock:
-            if not os.path.exists(dirname):
+            if not dirname.exists():
                 logger.debug(f"Creating directory {dirname}")
-                os.mkdir(dirname)
-        return dirname
+            dirname.mkdir(exist_ok=True)
+        return str(dirname)
 
     def get_date_directory(self, parent, photo):
         date_taken = photo.date_taken.split(' ')[0]
         year, month, day = date_taken.split('-')
-        dirname = os.path.join(parent, year, month, day)
+        dirname = Path(parent) / year / month / day
         with dirlock:
-            if not os.path.exists(dirname):
-                os.makedirs(dirname)
-        return dirname
+            dirname.mkdir(parents=True, exist_ok=True)
+        return str(dirname)
 
     def write_metadata(self, photo_filepath, photo):
-        filename = photo_filepath + "." + METADATA_EXTENSION
+        filename = f"{photo_filepath}.{METADATA_EXTENSION}"
         with open(filename, 'w', encoding='utf-8') as f:
             print("[Information]", file=f)
-            print("id = %s" % photo.id, file=f)
-            print("title = %s" % photo.title, file=f)
-            print("description = %s" % (photo.description or ""), file=f)
-            print("public = %s" % ("yes" if photo.is_public else "no"), file=f)
-            print("friends = %s" % ("yes" if photo.is_friend else "no"), file=f)
-            print("family = %s" % ("yes" if photo.is_family else "no"), file=f)
-            print("taken = %s" % photo.date_taken, file=f)
-            print("tags = %s" % ' '.join(photo.tags), file=f)
-            print("url = %s" % photo.url, file=f)
+            print(f"id = {photo.id}", file=f)
+            print(f"title = {photo.title}", file=f)
+            print(f"description = {photo.description or ''}", file=f)
+            print(f"public = {'yes' if photo.is_public else 'no'}", file=f)
+            print(f"friends = {'yes' if photo.is_friend else 'no'}", file=f)
+            print(f"family = {'yes' if photo.is_family else 'no'}", file=f)
+            print(f"taken = {photo.date_taken}", file=f)
+            print(f"tags = {' '.join(photo.tags)}", file=f)
+            print(f"url = {photo.url}", file=f)
 
     def retry(self, items_with_errors, error_file=None):
         retry_count = 0
@@ -547,21 +547,19 @@ def main():
         from_date = arguments.from_date
 
         # Figure out the start date
-        stamp_filename = os.path.join(destination, STAMP_FILENAME)
-        if not from_date:
-            if os.path.exists(stamp_filename):
-                with open(stamp_filename, 'r') as stamp:
-                    from_date = stamp.read().strip()
+        stamp_path = Path(destination) / STAMP_FILENAME
+        if not from_date and stamp_path.exists():
+            from_date = stamp_path.read_text().strip()
 
         if not from_date:
-            logger.error("No start date specified and no previous time stamp found in %s.", stamp_filename)
+            logger.error(f"No start date specified and no previous time stamp found in {stamp_path}")
             sys.exit(2)
 
         # Capture today's date (the script may run for more than one day)
         today = datetime.date.today().isoformat()
 
         # Run the backup
-        logger.info("Running backup of images updated since %s", from_date)
+        logger.info(f"Running backup of images updated since {from_date}")
         backup = FlickrBackup(destination,
                 store_once=arguments.store_once,
                 keep_existing=arguments.keep_existing,
@@ -574,8 +572,7 @@ def main():
         success = backup.run(from_date, arguments.error_file)
 
         # Store today's date
-        with open(stamp_filename, 'w') as stamp:
-            stamp.write(today)
+        stamp_path.write_text(today)
 
     if not success:
         logger.info("Done, with errors.")
