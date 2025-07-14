@@ -199,7 +199,6 @@ class FlickrBackup(object):
                 if e.code == 404:
                     # For 404 errors, just set the flag and continue
                     download_404 = True
-                    logger.warning("Photo %s (%s) not found at %s. Will write metadata only.", photo.title, photo.id, photo.url)
                 else:
                     raise
             except:
@@ -451,7 +450,7 @@ class FlickrBackup(object):
             self.download_photo(photo)
         except urllib.error.HTTPError as e:
             if e.code == 404:
-                logger.warning("Photo %s (%s) not found at %s. Normally this means Flickr will not allow it to be downloaded.", photo.title, photo.id, photo.url)
+                logger.warning("Photo %s (%s) not found at %s. Normally this means Flickr will not allow it to be downloaded. The metadata file (%s.%s) has been written and contains a record of the URL.", photo.title, photo.id, photo.url, photo.id, METADATA_EXTENSION)
             else:
                 logger.exception("An unexpected HTTP error occurred downloading %s (%s) from %s", photo.title, photo.id, photo.url)
             items_with_errors.append((photo.id, photo,))
