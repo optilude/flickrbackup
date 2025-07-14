@@ -28,7 +28,6 @@ dirlock = threading.RLock()
 
 logger = logging.getLogger('flickrbackup')
 
-# TODO: Factor out `threaded_download` 
 # TODO: Put 404 error handling into `download_photo`
 # TODO: Make sure new 404 error logging works with threaded downloads too
 # TODO: Ensure metadata is written even if the download gets a 404 (but not for other errors)
@@ -233,13 +232,6 @@ class FlickrBackup(object):
         has_more_pages = True
         total_printed = False
 
-        def threaded_download(photo):
-            try:
-                self.download_photo(photo)
-            except Exception:
-                logger.exception("An unexpected error occurred downloading %s (%s)" % (photo.title, photo.id,))
-                items_with_errors.append((photo.id, photo,))
-                raise
 
         while has_more_pages:
             recently_updated = self.flickr_api.favorites_getList(
@@ -269,20 +261,14 @@ class FlickrBackup(object):
                 photo = Photo.fromSearchResult(item, sizes, flickr_usernsid=self.flickr_usernsid)
 
                 if self.threaded:
-                    req = threadpool.WorkRequest(threaded_download, [photo], {})
+                    req = threadpool.WorkRequest(
+                        lambda p: self._initiate_download(p, items_with_errors),
+                        [photo],
+                        {}
+                    )
                     thread_pool.putRequest(req)
                 else:
-                    try:
-                        self.download_photo(photo)
-                    except urllib.error.HTTPError as e:
-                        if e.code == 404:
-                            logger.warning("Photo %s (%s) not found at %s. This normally means the file has to be manually downloaded through a web browser.", photo.title, photo.id, photo.url)
-                        else:
-                            logger.exception("An unexpected HTTP error occurred downloading %s (%s) from %s", photo.title, photo.id, photo.url)
-                        items_with_errors.append((photo.id, photo,))
-                    except:
-                        logger.exception("An unexpected error occurred downloading %s (%s)" % (photo.title, photo.id,))
-                        items_with_errors.append((photo.id, photo,))
+                    self._initiate_download(photo, items_with_errors)
 
         thread_pool.wait()
 
@@ -302,13 +288,7 @@ class FlickrBackup(object):
         items_with_errors = []
         thread_pool = threadpool.ThreadPool(self.threadpoolsize)
 
-        def threaded_download(photo):
-            try:
-                self.download_photo(photo)
-            except Exception:
-                logger.exception("An unexpected error occurred downloading %s (%s)", photo.title, photo.id)
-                items_with_errors.append((photo.id, photo))
-                raise
+
 
         logger.info("Processing %d photos", len(ids))
 
@@ -326,20 +306,14 @@ class FlickrBackup(object):
             photo = Photo.fromInfo(item.find('photo'), sizes.find('sizes'), flickr_usernsid=self.flickr_usernsid)
 
             if self.threaded:
-                req = threadpool.WorkRequest(threaded_download, [photo], {})
+                req = threadpool.WorkRequest(
+                    lambda p: self._initiate_download(p, items_with_errors),
+                    [photo],
+                    {}
+                )
                 thread_pool.putRequest(req)
             else:
-                try:
-                    self.download_photo(photo)
-                except urllib.error.HTTPError as e:
-                        if e.code == 404:
-                            logger.warning("Photo %s (%s) not found at %s. This normally means the file has to be manually downloaded through a web browser.", photo.title, photo.id, photo.url)
-                        else:
-                            logger.exception("An unexpected HTTP error occurred downloading %s (%s) from %s", photo.title, photo.id, photo.url)
-                        items_with_errors.append((photo.id, photo,))
-                except:
-                    logger.exception("An unexpected error occurred downloading %s (%s)", photo.title, photo.id)
-                    items_with_errors.append((id, photo,))
+                self._initiate_download(photo, items_with_errors)
 
         thread_pool.wait()
 
@@ -454,6 +428,26 @@ class FlickrBackup(object):
             return False
 
         return True
+
+    def _initiate_download(self, photo, items_with_errors):
+        """Helper method to handle threaded downloads of photos.
+        
+        Args:
+            photo: Photo object to download
+            items_with_errors: List to append errors to
+        """
+        try:
+            self.download_photo(photo)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                logger.warning("Photo %s (%s) not found at %s. Normally this means Flickr will not allow it to be downloaded.", photo.title, photo.id, photo.url)
+            else:
+                logger.exception("An unexpected HTTP error occurred downloading %s (%s) from %s", photo.title, photo.id, photo.url)
+            items_with_errors.append((photo.id, photo,))
+        except Exception:
+            logger.exception("An unexpected error occurred downloading %s (%s)", photo.title, photo.id)
+            items_with_errors.append((photo.id, photo,))
+            raise
 
 
 #
