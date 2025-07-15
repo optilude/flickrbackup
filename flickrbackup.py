@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# requires flickrapi, threadpool
-# Baesd on http://nathanvangheem.com/scripts/migrateflickrtopicasanokeyresize.py
+# requires flickrapi, threadpool, selenium
+# Based on http://nathanvangheem.com/scripts/migrateflickrtopicasanokeyresize.py
 
 import os
 import os.path
@@ -18,6 +18,10 @@ import threading
 import sys
 import logging
 import tempfile
+import json
+import csv
+import configparser
+
 
 FLICKR_API_KEY = "39b564af2057a7d014875e4939a292db"
 FLICKR_API_SECRET = "32cb192e3b9c43e6"
@@ -134,6 +138,104 @@ class Photo(object):
             url = info.get('url_o') or f"http://farm{info.get('farm')}.staticflickr.com/{info.get('server')}/{info.get('id')}_{info.get('originalsecret')}_o.{info.get('originalformat') or 'jpg'}"
 
         return url
+
+
+class MissingFileFinder(object):
+    """Find media files that are missing but have metadata files."""
+
+    def __init__(self, directory, verbose=False):
+        """Initialize the finder with a directory to search.
+        
+        Args:
+            directory: Base directory to search for missing files
+            verbose: Whether to output verbose logging
+        """
+        self.directory = directory
+        self.verbose = verbose
+
+    def find_missing_files(self, output_file):
+        """Search for metadata files that are missing their corresponding media files.
+        Writes results to a CSV file.
+        
+        Args:
+            output_file: Path to CSV file to write results to
+        """
+        missing_files = []
+        
+        # Walk through directory
+        for root, _, files in os.walk(self.directory):
+            for file in files:
+                if file.endswith(f".{METADATA_EXTENSION}"):
+                    metadata_path = os.path.join(root, file)
+                    media_path = metadata_path[:-len(f".{METADATA_EXTENSION}")]
+                    
+                    if not os.path.exists(media_path):
+                        # Parse metadata file to get id and url
+                        config = configparser.ConfigParser()
+                        try:
+                            config.read(metadata_path, encoding='utf-8')
+                            if 'Information' in config:
+                                photo_id = config['Information'].get('id', '')
+                                photo_url = config['Information'].get('url', '')
+                                missing_files.append([photo_id, photo_url, root])
+                        except Exception as e:
+                            logger.warning(f"Could not parse metadata file {metadata_path}: {str(e)}")
+        
+        # Write CSV file
+        with open(output_file, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(['Photo ID', 'URL', 'Directory'])
+            writer.writerows(missing_files)
+        
+        logger.info(f"Found {len(missing_files)} missing files. Results written to {output_file}")
+        return True
+
+    def obtain_web_session(self, output_file, browser='chrome'):
+        """Launch a browser to get authenticated Flickr session data.
+        Waits for user to log in manually, then saves the session data.
+        
+        Args:
+            output_file: Path to file where session data will be saved
+        """
+
+        from selenium import webdriver
+
+        # Initialize the web driver
+        options = None
+        driver = None
+        
+        if browser == 'firefox':
+            options = webdriver.FirefoxOptions()
+            driver = webdriver.Firefox(options=options)
+        else:
+            options = webdriver.ChromeOptions()
+            driver = webdriver.Chrome(options=options)
+        
+        try:
+            # Go to Flickr login page
+            driver.get('https://www.flickr.com/signin')
+            logger.info("Browser opened. Please log in to Flickr and then press Enter in this console to continue...")
+            input()
+
+            # Get all cookies and local storage
+            cookies = driver.get_cookies()
+            local_storage = driver.execute_script("return Object.assign({}, window.localStorage);")
+            
+            # Save session data
+            session_data = {
+                'cookies': cookies,
+                'localStorage': local_storage,
+                'url': driver.current_url
+            }
+            
+            with open(output_file, 'w') as f:
+                json.dump(session_data, f, indent=2)
+            
+            logger.info(f"Session data saved to {output_file}")
+            return True
+            
+        finally:
+            driver.quit()
 
 
 class FlickrBackup(object):
@@ -473,21 +575,34 @@ class FlickrBackup(object):
 
 
 def main():
-
     # Process command line arguments
-
     parser = argparse.ArgumentParser(description='Incremental Flickr backup')
-    parser.add_argument('-f', '--from', dest='from_date', help='Start date (YYYY-MM-DD)')
-    parser.add_argument('-v', '--verbose', action='store_true', help='Log progress information')
+    
+    # Create mutually exclusive group for operation mode
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument('-d', '--download', metavar='FILE',
+                           help='Attempt to download the photos with the ids in the given file, one per line (usually saved by the --error-file option)')
+    mode_group.add_argument('--find-missing', metavar='FILE',
+                           help='Search for metadata files without corresponding media files and write results to the specified CSV file')
+    mode_group.add_argument('--obtain-web-session', metavar='FILE',
+                           help='Launch a browser to obtain authenticated Flickr session data. Wait for manual login, then save session data to the specified file')
+    mode_group.add_argument('--favorites', action='store_true',
+                           help='Download favorites instead of own photos. Requires --from. Implies --store-once and does not organise photos into folders based on sets.')
+    mode_group.add_argument('-f', '--from', dest='from_date',
+                            help='Start date (YYYY-MM-DD) for backup. If not specified, uses the last backup date stored in .stamp file in the destination directory')
+
     parser.add_argument('-o', '--store-once', action='store_true', help='Only store photos once, even if they appear in multiple sets')
-    parser.add_argument('--favorites', action='store_true', help='Download favorites instead of own photos. Implies --store-once and does not organise photos into folders based on sets.')
     parser.add_argument('-k', '--keep-existing', action='store_true', help='Keep existing photos (default is to replace in case they have changed)')
     parser.add_argument('-r', '--retry', type=int, default=1, help='Retry download of failed images N times (default is to retry once)')
+    
     parser.add_argument('-e', '--error-file', help='Append ids of erroneous items to this file, to allow retry later')
-    parser.add_argument('-d', '--download', metavar='FILE', help='Attempt to download the photos with the ids in the given file, one per line (usually saved by the --error-file option)')
     parser.add_argument('-l', '--log-file', help='Log warnings and errors to the given file')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Log progress information')
+    
     parser.add_argument('--token-cache', dest='token_cache', help="Path to a directory where the login token data will be stored. Must be secure. Defaults to ~/.flickr")
     parser.add_argument('--single-threaded', action='store_false', dest='threaded', help='Run in single-threaded mode (for debugging purposes)')
+    parser.add_argument('--browser', choices=['chrome', 'firefox'], default='chrome', help='Browser to use for web session capture (default: chrome)')
+    
     parser.add_argument('destination', help='Destination directory')
 
     arguments = parser.parse_args()
@@ -521,9 +636,17 @@ def main():
         logger.addHandler(handler)
 
     # Run
+    if arguments.obtain_web_session:
+        logger.info("Launching browser to obtain Flickr session data...")
+        finder = MissingFileFinder(destination, verbose=arguments.verbose)
+        success = finder.obtain_web_session(arguments.obtain_web_session, arguments.browser)
 
-    if arguments.download:
-
+    elif arguments.find_missing:
+        logger.info("Searching for missing media files...")
+        finder = MissingFileFinder(destination, verbose=arguments.verbose)
+        success = finder.find_missing_files(arguments.find_missing)
+    
+    elif arguments.download:
         if not os.path.exists(arguments.download):
             logger.error("Download file %s does not exist.", arguments.download)
             sys.exit(2)
@@ -542,8 +665,26 @@ def main():
             )
         success = backup.download(ids, arguments.error_file)
 
-    else:
+    elif arguments.favorites:
+        if not arguments.from_date:
+            logger.error("--from/-f is required when using --favorites")
+            sys.exit(2)
 
+        from_date = arguments.from_date
+        logger.info(f"Running backup of favorites added since {from_date}")
+        backup = FlickrBackup(destination,
+                store_once=True,  # favorites mode always uses store_once
+                keep_existing=arguments.keep_existing,
+                favorites=True,
+                retry=arguments.retry,
+                verbose=arguments.verbose,
+                token_cache=arguments.token_cache,
+                threaded=arguments.threaded,
+            )
+        success = backup.run(from_date, arguments.error_file)
+
+    else:
+        # Normal incremental backup mode
         from_date = arguments.from_date
 
         # Figure out the start date
@@ -563,7 +704,7 @@ def main():
         backup = FlickrBackup(destination,
                 store_once=arguments.store_once,
                 keep_existing=arguments.keep_existing,
-                favorites=arguments.favorites,
+                favorites=False,
                 retry=arguments.retry,
                 verbose=arguments.verbose,
                 token_cache=arguments.token_cache,
