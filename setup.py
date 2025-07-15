@@ -7,10 +7,10 @@ with open(os.path.join(here, 'README.rst'), encoding='utf-8') as f:
 
 setup(
     name="flickrbackup",
-    version="0.11.4",
+    version="0.12",
     packages=find_packages(),
     scripts=['flickrbackup.py'],
-    install_requires=['flickrapi', 'threadpool', 'python-dateutil'],
+    install_requires=['flickrapi', 'threadpool', 'python-dateutil', 'requests'],
     package_data={
         # If any package contains *.txt or *.rst files, include them:
         '': ['*.txt', '*.rst', '*.md'],

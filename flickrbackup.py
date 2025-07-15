@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# requires flickrapi, threadpool, selenium
+# requires flickrapi, threadpool, selenium, requests
 # Based on http://nathanvangheem.com/scripts/migrateflickrtopicasanokeyresize.py
 
 import os
@@ -10,7 +10,7 @@ import shutil
 import datetime
 import dateutil.parser
 import argparse
-import urllib.request
+import requests
 import flickrapi
 import flickrapi.exceptions
 import threadpool
@@ -49,13 +49,6 @@ logging.getLogger('flickrapi').setLevel(logging.WARNING)
 # - It's unclear why this happens to some but not all videos
 # - The same base URLs (pre-redirect) seem to work in the browser when authenticated
 # - Need to test with a larger set of images and videos
-
-# XXX: This hack causes urllib to log all headers, which helps debug redirects
-# http_handler = urllib.request.HTTPHandler(debuglevel=1)
-# https_handler = urllib.request.HTTPSHandler(debuglevel=1)
-# opener = urllib.request.build_opener(http_handler, https_handler)
-# urllib.request.install_opener(opener)
-# /XXX
 
 class Photo(object):
 
@@ -305,34 +298,60 @@ class FlickrBackup(object):
             tmp_fd, tmp_filename = tempfile.mkstemp()
             download_404 = False
             try:
-                # Set up custom opener with session cookies if available
-                opener = urllib.request.build_opener()
+                # Set up session with cookies if available
+                session = requests.Session()
                 if self.web_session and 'cookies' in self.web_session:
-                    cookie_str = '; '.join([
-                        f"{c['name']}={c['value']}" 
-                        for c in self.web_session['cookies']
-                        if 'flickr' in c['domain']  # Only use Flickr cookies
-                    ])
-                    if cookie_str:
-                        opener.addheaders = [('Cookie', cookie_str)]
-                urllib.request.install_opener(opener)
+                    # Add Flickr cookies to the session
+                    for cookie in self.web_session['cookies']:
+                        if 'flickr' in cookie['domain']:
+                            session.cookies.set(
+                                cookie['name'], 
+                                cookie['value'], 
+                                domain=cookie['domain'],
+                                path=cookie.get('path', '/')
+                            )
                 
-                # Download file
-                tmp_filename, _ = urllib.request.urlretrieve(photo.url, tmp_filename, download_callback)
+                # Download file with progress callback if verbose
+                response = session.get(photo.url, stream=True)
+                response.raise_for_status()
+                
                 os.close(tmp_fd)
+                with open(tmp_filename, 'wb') as f:
+                    downloaded = 0
+                    total_size = int(response.headers.get('content-length', 0))
+                    
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            
+                            # Call progress callback if verbose
+                            if self.verbose and total_size > 0:
+                                download_callback(downloaded // 8192, 8192, total_size)
+                
                 shutil.move(tmp_filename, filepath)
                 logger.debug(f'Download of "{photo.title}" at {photo.url} to {filepath} finished')
-            except urllib.error.HTTPError as e:
-                os.close(tmp_fd)
-                os.unlink(tmp_filename)
-                if e.code == 404:
+            except requests.exceptions.HTTPError as e:
+                if tmp_fd is not None:
+                    try:
+                        os.close(tmp_fd)
+                    except:
+                        pass
+                if os.path.exists(tmp_filename):
+                    os.unlink(tmp_filename)
+                if e.response.status_code == 404:
                     # For 404 errors, just set the flag and continue
                     download_404 = True
                 else:
                     raise
-            except:
-                os.close(tmp_fd)
-                os.unlink(tmp_filename)
+            except Exception:
+                if tmp_fd is not None:
+                    try:
+                        os.close(tmp_fd)
+                    except:
+                        pass
+                if os.path.exists(tmp_filename):
+                    os.unlink(tmp_filename)
                 raise
             
             # Write metadata for both successful downloads and 404s
@@ -362,7 +381,7 @@ class FlickrBackup(object):
             print(photo.id)
 
         if download_404:
-            raise urllib.error.HTTPError(photo.url, 404, "Not Found", None, None)
+            raise requests.exceptions.HTTPError(f"404 Not Found: {photo.url}")
 
         return True
 
@@ -573,8 +592,8 @@ class FlickrBackup(object):
         """
         try:
             self.download_photo(photo)
-        except urllib.error.HTTPError as e:
-            if e.code == 404:
+        except requests.exceptions.HTTPError as e:
+            if "404" in str(e):
                 logger.warning(f"Photo {photo.title} ({photo.id}) not found at {photo.url}. Normally this means Flickr will not allow it to be downloaded. The metadata file ({photo.id}.{METADATA_EXTENSION}) has been written and contains a record of the URL")
             else:
                 logger.exception(f"An unexpected HTTP error occurred downloading {photo.title} ({photo.id}) from {photo.url}")
