@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# requires flickrapi, threadpool, selenium, requests
+# requires flickrapi, threadpool, requests, selenium (for web session capture)
 # Based on http://nathanvangheem.com/scripts/migrateflickrtopicasanokeyresize.py
 
 import os

@@ -8,9 +8,17 @@ Note: As of version 0.9, this now uses Python 3!
 Installation
 -------------
 
-Reqiures Python 3 and `pip`.
+Requires Python 3 and `pip`.
 
     $ pip install flickrbackup
+
+For the web session authentication feature, you'll also need Selenium and a
+compatible web driver (Chrome or Firefox)::
+
+    $ pip install selenium
+
+Make sure you have Chrome/Chromium or Firefox installed, as these are used
+for capturing authenticated sessions.
 
 Usage
 -----
@@ -82,9 +90,62 @@ files are always organised by date and not set::
 
     $ flickrbackup.py --favorites /path/to/faves
 
-To see further help, run::
+Web Session Authentication
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    $ flickrbackup.py --help
+Some photos and videos on Flickr may require additional authentication beyond
+the API token, especially for private content or videos with restricted access.
+As of version 0.11, flickrbackup will notice this and log a warning. As of
+version 0.12, there is support to identify the relevant files (see below).
+
+To make these downloads more likely to work, flickrbackup supports using
+authenticated browser session data. This requires a manual log-in via a web
+browser (Chrome or Firefox), but for as long as this session remains valid,
+(a Flickr policy) it should then work without a browser (and potentially on
+a different machine).
+
+First, capture an authenticated session by launching a browser and logging in::
+
+    $ flickrbackup.py --obtain-web-session session.json /path/to/photos
+
+This will open a browser window to Flickr's login page. Log in to your account,
+then press Enter in the console. The session data (including cookies) will be
+saved to ``session.json``.
+
+**Note:** This will only work in a windowed environment e.g. MacOS, Windows or
+a Linux desktop.
+
+You can then use this session data for downloads::
+
+    $ flickrbackup.py --web-session session.json <other options as needed> /path/to/photos
+
+The session file should be kept secure as it contains authentication data.
+
+By default, Chrome is used for session capture, but you can specify Firefox::
+
+    $ flickrbackup.py --obtain-web-session session.json --browser firefox /path/to/photos
+
+Finding Missing Files
+~~~~~~~~~~~~~~~~~~~~~
+
+If you suspect some media files failed to download but have metadata files,
+you can find them using::
+
+    $ flickrbackup.py --find-missing missing.csv /path/to/photos
+
+This will search for ``.txt`` metadata files that don't have corresponding
+media files and output a CSV file with photo IDs, URLs, and directories.
+You can then use this information to retry downloads or investigate issues.
+
+If you want to specifically download these files, you can copy the first
+column of the CSV file to a text file and use it with the
+``--download`` option. To do this on the command line::
+
+    $ cut -d',' -f1 missing.csv > redownload_missing.txt
+    $ flickrbackup.py --download redownload_missing.txt --web-session session.json /path/to/photos
+
+In this example, we have also used the ``--web-session`` option to make it more
+likely to work (see above).
 
 Known limitations
 -----------------
@@ -103,6 +164,17 @@ you need to, you can delete this file to force re-authorization.
 
 Changelog
 ---------
+
+Version 0.12, released 2025-07-15
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Added web session support for authenticated downloads to help with photos/videos that require browser authentication
+* Added ``--obtain-web-session`` option to capture authenticated browser session data
+* Added ``--web-session`` option to use captured session data for downloads
+* Added ``--find-missing`` option to identify missing media files (which may require)
+  a web session to work
+* Modernized HTTP operations by replacing ``urllib`` with ``requests`` library
+* Enhanced cookie handling for better authentication support
 
 Version 0.11.3, released 2025-07-15
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
