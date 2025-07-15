@@ -240,7 +240,7 @@ class MissingFileFinder(object):
 
 class FlickrBackup(object):
 
-    def __init__(self, destination, store_once=False, keep_existing=False, favorites=False, retry=1, verbose=False, token_cache=None, threaded=True, threadpoolsize=7):
+    def __init__(self, destination, store_once=False, keep_existing=False, favorites=False, retry=1, verbose=False, token_cache=None, web_session=None, threaded=True, threadpoolsize=7):
         self.destination = destination
         self.store_once = store_once
         self.keep_existing = keep_existing
@@ -250,6 +250,7 @@ class FlickrBackup(object):
         self.threadpoolsize = threadpoolsize
         self.token_cache = token_cache
         self.threaded = threaded
+        self.web_session = web_session
 
         # Initialise connection to Flickr
         self.flickr_api, self.flickr_usernsid = self.retrieve_flickr_token()
@@ -304,6 +305,19 @@ class FlickrBackup(object):
             tmp_fd, tmp_filename = tempfile.mkstemp()
             download_404 = False
             try:
+                # Set up custom opener with session cookies if available
+                opener = urllib.request.build_opener()
+                if self.web_session and 'cookies' in self.web_session:
+                    cookie_str = '; '.join([
+                        f"{c['name']}={c['value']}" 
+                        for c in self.web_session['cookies']
+                        if 'flickr' in c['domain']  # Only use Flickr cookies
+                    ])
+                    if cookie_str:
+                        opener.addheaders = [('Cookie', cookie_str)]
+                urllib.request.install_opener(opener)
+                
+                # Download file
                 tmp_filename, _ = urllib.request.urlretrieve(photo.url, tmp_filename, download_callback)
                 os.close(tmp_fd)
                 shutil.move(tmp_filename, filepath)
@@ -600,6 +614,7 @@ def main():
     parser.add_argument('-v', '--verbose', action='store_true', help='Log progress information')
     
     parser.add_argument('--token-cache', dest='token_cache', help="Path to a directory where the login token data will be stored. Must be secure. Defaults to ~/.flickr")
+    parser.add_argument('--web-session', help='Path to a session file created by --obtain-web-session to enable authenticated downloads')
     parser.add_argument('--single-threaded', action='store_false', dest='threaded', help='Run in single-threaded mode (for debugging purposes)')
     parser.add_argument('--browser', choices=['chrome', 'firefox'], default='chrome', help='Browser to use for web session capture (default: chrome)')
     
@@ -609,6 +624,17 @@ def main():
 
     destination = arguments.destination
     success = False
+    web_session_data = None
+
+    # Load web session if provided
+    if arguments.web_session:
+        try:
+            with open(arguments.web_session, 'r') as f:
+                web_session_data = json.load(f)
+            logger.info(f"Loaded web session from {arguments.web_session}")
+        except Exception as e:
+            logger.error(f"Could not load web session from {arguments.web_session}: {str(e)}")
+            sys.exit(2)
 
     # Setup logging
     log_level = logging.DEBUG if arguments.verbose else logging.INFO
@@ -661,6 +687,7 @@ def main():
                 retry=arguments.retry,
                 verbose=arguments.verbose,
                 token_cache=arguments.token_cache,
+                web_session=web_session_data,
                 threaded=arguments.threaded
             )
         success = backup.download(ids, arguments.error_file)
@@ -679,6 +706,7 @@ def main():
                 retry=arguments.retry,
                 verbose=arguments.verbose,
                 token_cache=arguments.token_cache,
+                web_session=web_session_data,
                 threaded=arguments.threaded,
             )
         success = backup.run(from_date, arguments.error_file)
@@ -708,6 +736,7 @@ def main():
                 retry=arguments.retry,
                 verbose=arguments.verbose,
                 token_cache=arguments.token_cache,
+                web_session=web_session_data,
                 threaded=arguments.threaded,
             )
         success = backup.run(from_date, arguments.error_file)
