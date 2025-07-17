@@ -598,7 +598,6 @@ class FlickrBackup(object):
 # CLI
 #
 
-
 def main():
     # Process command line arguments
     parser = argparse.ArgumentParser(description='Incremental Flickr backup')
@@ -687,7 +686,7 @@ def main():
     
     elif arguments.download:
         if not os.path.exists(arguments.download):
-            logger.error("Download file %s does not exist.", arguments.download)
+            logger.error("Download directory %s does not exist.", arguments.download)
             sys.exit(2)
 
         logger.info("Running backup of images found in %s", arguments.download)
@@ -704,57 +703,35 @@ def main():
                 threaded=arguments.threaded
             )
         success = backup.download(ids, arguments.error_file)
-
-    elif arguments.favorites:
-        if not arguments.from_date:
-            logger.error("--from/-f is required when using --favorites")
-            sys.exit(2)
-
-        from_date = arguments.from_date
-        logger.info(f"Running backup of favorites added since {from_date}")
-        backup = FlickrBackup(destination,
-                store_once=True,  # favorites mode always uses store_once
-                keep_existing=arguments.keep_existing,
-                favorites=True,
-                retry=arguments.retry,
-                verbose=arguments.verbose,
-                token_cache=arguments.token_cache,
-                web_session=web_session_data,
-                threaded=arguments.threaded,
-            )
-        success = backup.run(from_date, arguments.error_file)
-
     else:
-        # Normal incremental backup mode
-        from_date = arguments.from_date
 
         # Figure out the start date
+        from_date = arguments.from_date
         stamp_path = Path(destination) / STAMP_FILENAME
         if not from_date and stamp_path.exists():
             from_date = stamp_path.read_text().strip()
-
         if not from_date:
             logger.error(f"No start date specified and no previous time stamp found in {stamp_path}")
             sys.exit(2)
 
-        # Capture today's date (the script may run for more than one day)
-        today = datetime.date.today().isoformat()
+        if arguments.favorites:        
+            logger.info(f"Running backup of favorites added since {from_date}")
+        else:
+            logger.info(f"Running backup of images updated since {from_date}")
 
-        # Run the backup
-        logger.info(f"Running backup of images updated since {from_date}")
         backup = FlickrBackup(destination,
-                store_once=arguments.store_once,
+                store_once=True if arguments.favorites else arguments.store_once,  # favorites mode always uses store_once
                 keep_existing=arguments.keep_existing,
-                favorites=False,
+                favorites=arguments.favorites,
                 retry=arguments.retry,
                 verbose=arguments.verbose,
                 token_cache=arguments.token_cache,
                 web_session=web_session_data,
                 threaded=arguments.threaded,
             )
-        success = backup.run(from_date, arguments.error_file)
 
-        # Store today's date
+        today = datetime.date.today().isoformat() # do this before running the backup in case it spans more than one day!
+        success = backup.run(from_date, arguments.error_file)
         stamp_path.write_text(today)
 
     if not success:
