@@ -12,8 +12,8 @@ Requires Python 3 and `pip`.
 
     $ pip install flickrbackup
 
-For the web session authentication feature, you'll also need Selenium and a
-compatible web driver (Chrome or Firefox)::
+For the web session authentication feature (see below, you'll also need
+Selenium and a compatible web driver (Chrome or Firefox)::
 
     $ pip install selenium
 
@@ -94,15 +94,23 @@ Web Session Authentication
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Some photos and videos on Flickr may require additional authentication beyond
-the API token, especially for private content or videos with restricted access.
-As of version 0.11, flickrbackup will notice this and log a warning. As of
-version 0.12, there is support to identify the relevant files (see below).
+the API token. It is a little unclear why this happens, but it seems to relate
+to videos, especially ones uploaded some time ago. It is possible that this is
+an unresolved issue with the way Flickr manages its media files in CDNs, but
+there is no official support channel for the API so we have to make some guesses.
 
-To make these downloads more likely to work, flickrbackup supports using
+As of version 0.11, flickrbackup will notice when this happens and log a
+warning. As of version 0.12, there is support to identify the relevant missing
+files in a large download directly to make it easier to attempt to re-download
+them (see below).
+
+To make a redownload attempt more likely to work, flickrbackup supports using
 authenticated browser session data. This requires a manual log-in via a web
 browser (Chrome or Firefox), but for as long as this session remains valid,
 (a Flickr policy) it should then work without a browser (and potentially on
-a different machine).
+a different machine, which means it is possible to performt the authentication
+on a desktop and copy the session file to a NAS or server that is performing
+regular backups).
 
 First, capture an authenticated session by launching a browser and logging in::
 
@@ -115,11 +123,18 @@ saved to ``session.json``.
 **Note:** This will only work in a windowed environment e.g. MacOS, Windows or
 a Linux desktop.
 
+**WARNING:** The session file contains sensitive authentication data, so it
+should be kept secure. Saving this data in plain text is not really great
+security practice, but there are few good generic options that would not make
+this script significantly more complicated to deploy and use. However, you are
+recommended to set file permissions so that only the user who will be running
+the script can read it, e.g.::
+
+    $ chmod 600 session.json
+
 You can then use this session data for downloads::
 
     $ flickrbackup.py --web-session session.json <other options as needed> /path/to/photos
-
-The session file should be kept secure as it contains authentication data.
 
 By default, Chrome is used for session capture, but you can specify Firefox::
 
@@ -147,6 +162,11 @@ column of the CSV file to a text file and use it with the
 In this example, we have also used the ``--web-session`` option to make it more
 likely to work (see above).
 
+There is no particular reason you can't pass `--web-session` to the script every
+time you run it, though it might be difficult to detect if and when the session
+is no longer valid. The return of unexpected 404 errors might be a good indication.
+In this case, authenticate again as above and replace the session file.
+
 Known limitations
 -----------------
 
@@ -160,12 +180,14 @@ Logging out
 -----------
 
 OAuth tokens are stored in a database in `~/.flickr/oauth-tokens.sqlite`. If
-you need to, you can delete this file to force re-authorization.
+you need to, you can delete this file to force re-authorization. You can also
+use the ``--token-cache`` option to specify a different location for this database,
+including an empty directory, which will again force re-authentication.
 
 Changelog
 ---------
 
-Version 0.12, released 2025-07-15
+Version 0.12, released 2025-07-17
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 * Added web session support for authenticated downloads to help with photos/videos that require browser authentication
