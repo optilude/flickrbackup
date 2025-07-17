@@ -112,7 +112,7 @@ regular backups).
 
 First, capture an authenticated session by launching a browser and logging in::
 
-    $ flickrbackup.py --obtain-web-session session.json /path/to/photos
+    $ flickrbackup.py --obtain-web-session session.json
 
 This will open a browser window to Flickr's login page. Log in to your account,
 then press Enter in the console. The session data (including cookies) will be
@@ -136,7 +136,7 @@ You can then use this session data for downloads::
 
 By default, Chrome is used for session capture, but you can specify Firefox::
 
-    $ flickrbackup.py --obtain-web-session session.json --browser firefox /path/to/photos
+    $ flickrbackup.py --obtain-web-session session.json --browser firefox
 
 Finding Missing Files
 ~~~~~~~~~~~~~~~~~~~~~
@@ -184,6 +184,11 @@ including an empty directory, which will again force re-authentication.
 
 Changelog
 ---------
+
+Version 0.12.1, released 2025-07-17
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Avoid the need to specify the photos directory when using ``--obtain-web-session``
 
 Version 0.12, released 2025-07-17
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

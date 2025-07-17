@@ -133,102 +133,94 @@ class Photo(object):
         return url
 
 
-class MissingFileFinder(object):
-    """Find media files that are missing but have metadata files."""
+def find_missing_files(directory, output_file, verbose=False):
+    """Search for metadata files that are missing their corresponding media files.
+    Writes results to a CSV file.
+    
+    Args:
+        directory: Base directory to search for missing files
+        output_file: Path to CSV file to write results to
+        verbose: Whether to output verbose logging
+    """
+    missing_files = []
+    
+    # Walk through directory
+    for root, _, files in os.walk(directory):
+        for file in files:
+            if file.endswith(f".{METADATA_EXTENSION}"):
+                metadata_path = os.path.join(root, file)
+                media_path = metadata_path[:-len(f".{METADATA_EXTENSION}")]
+                
+                if not os.path.exists(media_path):
+                    # Parse metadata file to get id and url
+                    config = configparser.ConfigParser()
+                    try:
+                        config.read(metadata_path, encoding='utf-8')
+                        if 'Information' in config:
+                            photo_id = config['Information'].get('id', '')
+                            photo_url = config['Information'].get('url', '')
+                            missing_files.append([photo_id, photo_url, root])
+                    except Exception as e:
+                        logger.warning(f"Could not parse metadata file {metadata_path}: {str(e)}")
+    
+    # Write CSV file
+    with open(output_file, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(['Photo ID', 'URL', 'Directory'])
+        writer.writerows(missing_files)
+    
+    logger.info(f"Found {len(missing_files)} missing files. Results written to {output_file}")
+    return True
 
-    def __init__(self, directory, verbose=False):
-        """Initialize the finder with a directory to search.
-        
-        Args:
-            directory: Base directory to search for missing files
-            verbose: Whether to output verbose logging
-        """
-        self.directory = directory
-        self.verbose = verbose
 
-    def find_missing_files(self, output_file):
-        """Search for metadata files that are missing their corresponding media files.
-        Writes results to a CSV file.
+def obtain_web_session(output_file, browser='chrome', verbose=False):
+    """Launch a browser to get authenticated Flickr session data.
+    Waits for user to log in manually, then saves the session data.
+    
+    Args:
+        output_file: Path to file where session data will be saved
+        browser: Browser to use ('chrome' or 'firefox')
+        verbose: Whether to output verbose logging
+    """
+
+    from selenium import webdriver
+
+    # Initialize the web driver
+    options = None
+    driver = None
+    
+    if browser == 'firefox':
+        options = webdriver.FirefoxOptions()
+        driver = webdriver.Firefox(options=options)
+    else:
+        options = webdriver.ChromeOptions()
+        driver = webdriver.Chrome(options=options)
+    
+    try:
+        # Go to Flickr login page
+        driver.get('https://www.flickr.com/signin')
+        logger.info("Browser opened. Please log in to Flickr and then press Enter in this console to continue...")
+        input()
+
+        # Get all cookies and local storage
+        cookies = driver.get_cookies()
+        local_storage = driver.execute_script("return Object.assign({}, window.localStorage);")
         
-        Args:
-            output_file: Path to CSV file to write results to
-        """
-        missing_files = []
+        # Save session data
+        session_data = {
+            'cookies': cookies,
+            'localStorage': local_storage,
+            'url': driver.current_url
+        }
         
-        # Walk through directory
-        for root, _, files in os.walk(self.directory):
-            for file in files:
-                if file.endswith(f".{METADATA_EXTENSION}"):
-                    metadata_path = os.path.join(root, file)
-                    media_path = metadata_path[:-len(f".{METADATA_EXTENSION}")]
-                    
-                    if not os.path.exists(media_path):
-                        # Parse metadata file to get id and url
-                        config = configparser.ConfigParser()
-                        try:
-                            config.read(metadata_path, encoding='utf-8')
-                            if 'Information' in config:
-                                photo_id = config['Information'].get('id', '')
-                                photo_url = config['Information'].get('url', '')
-                                missing_files.append([photo_id, photo_url, root])
-                        except Exception as e:
-                            logger.warning(f"Could not parse metadata file {metadata_path}: {str(e)}")
+        with open(output_file, 'w') as f:
+            json.dump(session_data, f, indent=2)
         
-        # Write CSV file
-        with open(output_file, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(['Photo ID', 'URL', 'Directory'])
-            writer.writerows(missing_files)
-        
-        logger.info(f"Found {len(missing_files)} missing files. Results written to {output_file}")
+        logger.info(f"Session data saved to {output_file}")
         return True
-
-    def obtain_web_session(self, output_file, browser='chrome'):
-        """Launch a browser to get authenticated Flickr session data.
-        Waits for user to log in manually, then saves the session data.
         
-        Args:
-            output_file: Path to file where session data will be saved
-        """
-
-        from selenium import webdriver
-
-        # Initialize the web driver
-        options = None
-        driver = None
-        
-        if browser == 'firefox':
-            options = webdriver.FirefoxOptions()
-            driver = webdriver.Firefox(options=options)
-        else:
-            options = webdriver.ChromeOptions()
-            driver = webdriver.Chrome(options=options)
-        
-        try:
-            # Go to Flickr login page
-            driver.get('https://www.flickr.com/signin')
-            logger.info("Browser opened. Please log in to Flickr and then press Enter in this console to continue...")
-            input()
-
-            # Get all cookies and local storage
-            cookies = driver.get_cookies()
-            local_storage = driver.execute_script("return Object.assign({}, window.localStorage);")
-            
-            # Save session data
-            session_data = {
-                'cookies': cookies,
-                'localStorage': local_storage,
-                'url': driver.current_url
-            }
-            
-            with open(output_file, 'w') as f:
-                json.dump(session_data, f, indent=2)
-            
-            logger.info(f"Session data saved to {output_file}")
-            return True
-            
-        finally:
-            driver.quit()
+    finally:
+        driver.quit()
 
 
 class FlickrBackup(object):
@@ -637,11 +629,15 @@ def main():
     parser.add_argument('--single-threaded', action='store_false', dest='threaded', help='Run in single-threaded mode (for debugging purposes)')
     parser.add_argument('--browser', choices=['chrome', 'firefox'], default='chrome', help='Browser to use for web session capture (default: chrome)')
     
-    parser.add_argument('destination', help='Destination directory')
+    parser.add_argument('destination', nargs='?', help='Destination directory (not required for --obtain-web-session)')
 
     arguments = parser.parse_args()
 
-    destination = arguments.destination
+    # Validate that destination is provided for operations that need it
+    if not arguments.obtain_web_session and not arguments.destination:
+        parser.error("destination is required except when using --obtain-web-session")
+
+    destination = arguments.destination or ""
     success = False
     web_session_data = None
 
@@ -683,13 +679,11 @@ def main():
     # Run
     if arguments.obtain_web_session:
         logger.info("Launching browser to obtain Flickr session data...")
-        finder = MissingFileFinder(destination, verbose=arguments.verbose)
-        success = finder.obtain_web_session(arguments.obtain_web_session, arguments.browser)
+        success = obtain_web_session(arguments.obtain_web_session, arguments.browser, arguments.verbose)
 
     elif arguments.find_missing:
         logger.info("Searching for missing media files...")
-        finder = MissingFileFinder(destination, verbose=arguments.verbose)
-        success = finder.find_missing_files(arguments.find_missing)
+        success = find_missing_files(destination, arguments.find_missing, arguments.verbose)
     
     elif arguments.download:
         if not os.path.exists(arguments.download):
