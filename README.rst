@@ -3,8 +3,6 @@ Flickr Incremental Backup
 
 A tool to incrementally backup your photos from `Flickr <http://flickr.com>`_.
 
-Note: As of version 0.9, this now uses Python 3!
-
 Installation
 -------------
 
