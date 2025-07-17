@@ -648,7 +648,7 @@ def main():
             logger.info(f"Loaded web session from {arguments.web_session}")
         except Exception as e:
             logger.error(f"Could not load web session from {arguments.web_session}: {str(e)}")
-            sys.exit(2)
+            sys.exit(1)
 
     # Setup logging
     log_level = logging.DEBUG if arguments.verbose else logging.INFO
@@ -687,7 +687,7 @@ def main():
     elif arguments.download:
         if not os.path.exists(arguments.download):
             logger.error("Download directory %s does not exist.", arguments.download)
-            sys.exit(2)
+            sys.exit(1)
 
         logger.info("Running backup of images found in %s", arguments.download)
         with open(arguments.download, 'r') as f:
@@ -712,7 +712,7 @@ def main():
             from_date = stamp_path.read_text().strip()
         if not from_date:
             logger.error(f"No start date specified and no previous time stamp found in {stamp_path}")
-            sys.exit(2)
+            sys.exit(1)
 
         if arguments.favorites:        
             logger.info(f"Running backup of favorites added since {from_date}")

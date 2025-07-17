@@ -185,6 +185,11 @@ including an empty directory, which will again force re-authentication.
 Changelog
 ---------
 
+Version 0.12.3, released 2025-07-17
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Be more careful with error codes when failing due to invalid parameters
+
 Version 0.12.2, released 2025-07-17
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
