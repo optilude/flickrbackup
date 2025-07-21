@@ -4,6 +4,7 @@
 # Usage: ./move_favorites_to_date_dirs.sh [options] [directory]
 # Options:
 #   --dry-run    Show what would be done without making any changes
+#   --force      Move files if the set file is bigger than the existing date file
 # If no directory specified, uses current directory
 
 set -e  # Exit on any error
@@ -18,6 +19,7 @@ NC='\033[0m' # No Color
 
 # Parse command line arguments
 DRY_RUN=false
+FORCE=false
 TARGET_DIR=""
 
 while [[ $# -gt 0 ]]; do
@@ -26,9 +28,13 @@ while [[ $# -gt 0 ]]; do
             DRY_RUN=true
             shift
             ;;
+        --force)
+            FORCE=true
+            shift
+            ;;
         -*)
             echo -e "${RED}Error: Unknown option $1${NC}"
-            echo "Usage: $0 [--dry-run] [directory]"
+            echo "Usage: $0 [--dry-run] [--force] [directory]"
             exit 1
             ;;
         *)
@@ -36,7 +42,7 @@ while [[ $# -gt 0 ]]; do
                 TARGET_DIR="$1"
             else
                 echo -e "${RED}Error: Multiple directories specified${NC}"
-                echo "Usage: $0 [--dry-run] [directory]"
+                echo "Usage: $0 [--dry-run] [--force] [directory]"
                 exit 1
             fi
             shift
@@ -56,6 +62,9 @@ fi
 echo -e "${BLUE}Moving files from set directories to top-level date directories...${NC}"
 if [[ "$DRY_RUN" == true ]]; then
     echo -e "${CYAN}*** DRY RUN MODE - No files will be moved or deleted ***${NC}"
+fi
+if [[ "$FORCE" == true ]]; then
+    echo -e "${YELLOW}*** FORCE MODE - Will overwrite smaller files in date directories ***${NC}"
 fi
 echo -e "${BLUE}Target directory: $(realpath "$TARGET_DIR")${NC}"
 echo
@@ -94,6 +103,7 @@ format_file_size() {
 moved_files=0
 skipped_files=0
 conflicts=0
+forced_overwrites=0
 
 # Find all files in set directories (pattern: SET_NAME/YYYY/MM/DD/*)
 # We look for directories that match the pattern and contain files
@@ -131,20 +141,37 @@ while IFS= read -r -d '' set_date_dir; do
                 source_size=$(get_file_size "$file")
                 dest_size=$(get_file_size "$destination")
                 
-                echo -e "  ${RED}CONFLICT:${NC} $filename"
-                echo -e "    Set file:  $(format_file_size "$source_size") - $file"
-                echo -e "    Date file: $(format_file_size "$dest_size") - $destination"
-                
                 if [[ "$source_size" == "$dest_size" ]]; then
+                    # Files are same size - remove duplicate from set directory
                     if [[ "$DRY_RUN" == true ]]; then
-                        echo -e "    ${CYAN}Would remove duplicate from set directory (same size)${NC}"
+                        echo -e "  ${CYAN}Would remove duplicate:${NC} $filename (same size)"
                     else
-                        echo -e "    ${GREEN}Files are same size - removing duplicate from set directory${NC}"
+                        echo -e "  ${GREEN}Removing duplicate:${NC} $filename (same size)"
                         rm "$file"
                     fi
                     moved_files=$((moved_files + 1))
+                elif [[ "$FORCE" == true ]] && [[ "$source_size" -gt "$dest_size" ]]; then
+                    # Force mode: set file is bigger, so replace the date file
+                    if [[ "$DRY_RUN" == true ]]; then
+                        echo -e "  ${YELLOW}Would force overwrite:${NC} $filename"
+                        echo -e "    Set file:  $(format_file_size "$source_size") > Date file: $(format_file_size "$dest_size")"
+                    else
+                        echo -e "  ${YELLOW}Force overwriting:${NC} $filename"
+                        echo -e "    Set file:  $(format_file_size "$source_size") > Date file: $(format_file_size "$dest_size")"
+                        mv "$file" "$destination"
+                    fi
+                    forced_overwrites=$((forced_overwrites + 1))
+                    moved_files=$((moved_files + 1))
                 else
-                    echo -e "    ${YELLOW}Files are different sizes - keeping both (manual review needed)${NC}"
+                    # Files are different sizes - report conflict
+                    echo -e "  ${RED}CONFLICT:${NC} $filename"
+                    echo -e "    Set file:  $(format_file_size "$source_size") - $file"
+                    echo -e "    Date file: $(format_file_size "$dest_size") - $destination"
+                    if [[ "$FORCE" == true ]]; then
+                        echo -e "    ${CYAN}Set file is smaller - not overwriting (use manual review)${NC}"
+                    else
+                        echo -e "    ${YELLOW}Files are different sizes - keeping both (manual review needed or use --force)${NC}"
+                    fi
                     conflicts=$((conflicts + 1))
                 fi
             else
@@ -215,9 +242,15 @@ echo -e "${GREEN}Summary:${NC}"
 if [[ "$DRY_RUN" == true ]]; then
     echo -e "  Files that would be moved/deduplicated: $moved_files"
     echo -e "  Files with conflicts (would need manual review): $conflicts"
+    if [[ "$FORCE" == true ]]; then
+        echo -e "  Files that would be force overwritten: $forced_overwrites"
+    fi
 else
     echo -e "  Files moved/deduplicated: $moved_files"
     echo -e "  Files with conflicts (need manual review): $conflicts"
+    if [[ "$FORCE" == true ]]; then
+        echo -e "  Files force overwritten: $forced_overwrites"
+    fi
 fi
 
 if [[ $conflicts -gt 0 ]]; then
