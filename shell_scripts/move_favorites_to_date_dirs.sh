@@ -1,7 +1,9 @@
 #!/bin/bash
 
 # Script to move files from set directories to top-level date directories
-# Usage: ./move_favorites_to_date_dirs.sh [directory]
+# Usage: ./move_favorites_to_date_dirs.sh [options] [directory]
+# Options:
+#   --dry-run    Show what would be done without making any changes
 # If no directory specified, uses current directory
 
 set -e  # Exit on any error
@@ -11,10 +13,39 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
+# Parse command line arguments
+DRY_RUN=false
+TARGET_DIR=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        -*)
+            echo -e "${RED}Error: Unknown option $1${NC}"
+            echo "Usage: $0 [--dry-run] [directory]"
+            exit 1
+            ;;
+        *)
+            if [[ -z "$TARGET_DIR" ]]; then
+                TARGET_DIR="$1"
+            else
+                echo -e "${RED}Error: Multiple directories specified${NC}"
+                echo "Usage: $0 [--dry-run] [directory]"
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
 # Get the target directory (default to current directory)
-TARGET_DIR="${1:-.}"
+TARGET_DIR="${TARGET_DIR:-.}"
 
 # Validate directory exists
 if [[ ! -d "$TARGET_DIR" ]]; then
@@ -23,6 +54,9 @@ if [[ ! -d "$TARGET_DIR" ]]; then
 fi
 
 echo -e "${BLUE}Moving files from set directories to top-level date directories...${NC}"
+if [[ "$DRY_RUN" == true ]]; then
+    echo -e "${CYAN}*** DRY RUN MODE - No files will be moved or deleted ***${NC}"
+fi
 echo -e "${BLUE}Target directory: $(realpath "$TARGET_DIR")${NC}"
 echo
 
@@ -77,9 +111,15 @@ while IFS= read -r -d '' set_date_dir; do
         
         # Create top-level date directory if it doesn't exist
         top_level_date_dir="$TARGET_DIR/$date_path"
-        mkdir -p "$top_level_date_dir"
-        
-        echo -e "${YELLOW}Processing: $set_date_dir${NC}"
+        if [[ "$DRY_RUN" == true ]]; then
+            echo -e "${YELLOW}Processing: $set_date_dir${NC} ${CYAN}(DRY RUN)${NC}"
+            if [[ ! -d "$top_level_date_dir" ]]; then
+                echo -e "  ${CYAN}Would create directory: $top_level_date_dir${NC}"
+            fi
+        else
+            mkdir -p "$top_level_date_dir"
+            echo -e "${YELLOW}Processing: $set_date_dir${NC}"
+        fi
         
         # Find all files in this set date directory
         while IFS= read -r -d '' file; do
@@ -96,8 +136,12 @@ while IFS= read -r -d '' set_date_dir; do
                 echo -e "    Date file: $(format_file_size "$dest_size") - $destination"
                 
                 if [[ "$source_size" == "$dest_size" ]]; then
-                    echo -e "    ${GREEN}Files are same size - removing duplicate from set directory${NC}"
-                    rm "$file"
+                    if [[ "$DRY_RUN" == true ]]; then
+                        echo -e "    ${CYAN}Would remove duplicate from set directory (same size)${NC}"
+                    else
+                        echo -e "    ${GREEN}Files are same size - removing duplicate from set directory${NC}"
+                        rm "$file"
+                    fi
                     ((moved_files++))
                 else
                     echo -e "    ${YELLOW}Files are different sizes - keeping both (manual review needed)${NC}"
@@ -105,16 +149,24 @@ while IFS= read -r -d '' set_date_dir; do
                 fi
             else
                 # Safe to move
-                mv "$file" "$destination"
-                echo -e "  ${GREEN}Moved:${NC} $filename"
+                if [[ "$DRY_RUN" == true ]]; then
+                    echo -e "  ${CYAN}Would move:${NC} $filename"
+                else
+                    mv "$file" "$destination"
+                    echo -e "  ${GREEN}Moved:${NC} $filename"
+                fi
                 ((moved_files++))
             fi
         done < <(find "$set_date_dir" -maxdepth 1 -type f -print0)
         
         # Remove empty set date directory if it's now empty
         if [[ -d "$set_date_dir" ]] && [[ -z "$(ls -A "$set_date_dir")" ]]; then
-            rmdir "$set_date_dir"
-            echo -e "  ${BLUE}Removed empty directory: $set_date_dir${NC}"
+            if [[ "$DRY_RUN" == true ]]; then
+                echo -e "  ${CYAN}Would remove empty directory: $set_date_dir${NC}"
+            else
+                rmdir "$set_date_dir"
+                echo -e "  ${BLUE}Removed empty directory: $set_date_dir${NC}"
+            fi
         fi
         
     fi
@@ -122,33 +174,67 @@ done < <(find "$TARGET_DIR" -type d -path "*/[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-
 
 # Now clean up empty set directories
 echo
-echo -e "${BLUE}Cleaning up empty set directories...${NC}"
+if [[ "$DRY_RUN" == true ]]; then
+    echo -e "${BLUE}Would clean up empty set directories...${NC}"
+else
+    echo -e "${BLUE}Cleaning up empty set directories...${NC}"
+fi
 
 # Find and remove empty year directories within sets
-find "$TARGET_DIR" -type d -path "*/[0-9][0-9][0-9][0-9]/[0-9][0-9]" -empty -delete 2>/dev/null || true
-find "$TARGET_DIR" -type d -path "*/[0-9][0-9][0-9][0-9]" -empty -delete 2>/dev/null || true
+if [[ "$DRY_RUN" == true ]]; then
+    # In dry run mode, just show what would be deleted
+    while IFS= read -r -d '' empty_dir; do
+        echo -e "  ${CYAN}Would remove empty month directory: $empty_dir${NC}"
+    done < <(find "$TARGET_DIR" -type d -path "*/[0-9][0-9][0-9][0-9]/[0-9][0-9]" -empty -print0 2>/dev/null)
+    
+    while IFS= read -r -d '' empty_dir; do
+        echo -e "  ${CYAN}Would remove empty year directory: $empty_dir${NC}"
+    done < <(find "$TARGET_DIR" -type d -path "*/[0-9][0-9][0-9][0-9]" -empty -print0 2>/dev/null)
+else
+    find "$TARGET_DIR" -type d -path "*/[0-9][0-9][0-9][0-9]/[0-9][0-9]" -empty -delete 2>/dev/null || true
+    find "$TARGET_DIR" -type d -path "*/[0-9][0-9][0-9][0-9]" -empty -delete 2>/dev/null || true
+fi
 
 # Find and remove empty set directories (but not top-level date directories)
 while IFS= read -r -d '' empty_dir; do
     # Don't remove if it's a top-level date directory (YYYY, YYYY/MM, or YYYY/MM/DD)
     if [[ ! "$empty_dir" =~ ^$TARGET_DIR/[0-9]{4}(/[0-9]{2}(/[0-9]{2})?)?$ ]]; then
         if [[ -d "$empty_dir" ]] && [[ -z "$(ls -A "$empty_dir")" ]]; then
-            rmdir "$empty_dir" 2>/dev/null || true
-            echo -e "  ${BLUE}Removed empty set directory: $empty_dir${NC}"
+            if [[ "$DRY_RUN" == true ]]; then
+                echo -e "  ${CYAN}Would remove empty set directory: $empty_dir${NC}"
+            else
+                rmdir "$empty_dir" 2>/dev/null || true
+                echo -e "  ${BLUE}Removed empty set directory: $empty_dir${NC}"
+            fi
         fi
     fi
 done < <(find "$TARGET_DIR" -type d -empty -print0 2>/dev/null)
 
 echo
 echo -e "${GREEN}Summary:${NC}"
-echo -e "  Files moved/deduplicated: $moved_files"
-echo -e "  Files with conflicts (need manual review): $conflicts"
+if [[ "$DRY_RUN" == true ]]; then
+    echo -e "  Files that would be moved/deduplicated: $moved_files"
+    echo -e "  Files with conflicts (would need manual review): $conflicts"
+else
+    echo -e "  Files moved/deduplicated: $moved_files"
+    echo -e "  Files with conflicts (need manual review): $conflicts"
+fi
 
 if [[ $conflicts -gt 0 ]]; then
     echo
-    echo -e "${YELLOW}Please manually review the conflicting files listed above.${NC}"
-    echo -e "${YELLOW}They have different sizes and may be different versions of the same photo.${NC}"
+    if [[ "$DRY_RUN" == true ]]; then
+        echo -e "${YELLOW}The conflicting files listed above would need manual review.${NC}"
+        echo -e "${YELLOW}They have different sizes and may be different versions of the same photo.${NC}"
+    else
+        echo -e "${YELLOW}Please manually review the conflicting files listed above.${NC}"
+        echo -e "${YELLOW}They have different sizes and may be different versions of the same photo.${NC}"
+    fi
     exit 1
 else
-    echo -e "${GREEN}All files processed successfully!${NC}"
+    if [[ "$DRY_RUN" == true ]]; then
+        echo -e "${GREEN}All files would be processed successfully!${NC}"
+        echo -e "${CYAN}Run without --dry-run to perform the actual operations.${NC}"
+    else
+        echo -e "${GREEN}All files processed successfully!${NC}"
+    fi
 fi
