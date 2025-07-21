@@ -193,6 +193,11 @@ including an empty directory, which will again force re-authentication.
 Changelog
 ---------
 
+Version 0.12.5, released 2025-07-20
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Fix retry logic even when there is an early Flickr error.
+
 Version 0.12.4, released 2025-07-20
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

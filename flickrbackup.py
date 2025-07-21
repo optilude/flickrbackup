@@ -554,7 +554,19 @@ class FlickrBackup(object):
             still_in_error = []
             for id, photo in items_with_errors:
                 if photo is not None:
+                    # Photo object exists, retry download
                     self._initiate_download(photo, still_in_error)
+                else:
+                    # Photo object is None, retry fetching photo info first
+                    try:
+                        item = self.flickr_api.photos_getInfo(photo_id=id)
+                        sizes = self.flickr_api.photos_getSizes(photo_id=id)
+                        photo = Photo.fromInfo(item.find('photo'), sizes.find('sizes'), flickr_usernsid=self.flickr_usernsid)
+                        self._initiate_download(photo, still_in_error)
+                    except Exception:
+                        logger.exception("An unexpected error occurred getting info for photo id %s during retry", id)
+                        still_in_error.append((id, None))
+            
             items_with_errors = still_in_error
 
             if not items_with_errors:
