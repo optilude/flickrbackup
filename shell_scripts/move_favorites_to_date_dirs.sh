@@ -142,10 +142,10 @@ while IFS= read -r -d '' set_date_dir; do
                         echo -e "    ${GREEN}Files are same size - removing duplicate from set directory${NC}"
                         rm "$file"
                     fi
-                    ((moved_files++))
+                    moved_files=$((moved_files + 1))
                 else
                     echo -e "    ${YELLOW}Files are different sizes - keeping both (manual review needed)${NC}"
-                    ((conflicts++))
+                    conflicts=$((conflicts + 1))
                 fi
             else
                 # Safe to move
@@ -155,7 +155,7 @@ while IFS= read -r -d '' set_date_dir; do
                     mv "$file" "$destination"
                     echo -e "  ${GREEN}Moved:${NC} $filename"
                 fi
-                ((moved_files++))
+                moved_files=$((moved_files + 1))
             fi
         done < <(find "$set_date_dir" -maxdepth 1 -type f -print0)
         

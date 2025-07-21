@@ -64,52 +64,20 @@ format_file_size() {
     fi
 }
 
-# Function to check if a .mov file is likely an image
-# Heuristics:
-# 1. Very small files (< 100KB) are likely images
-# 2. Files that don't have proper movie headers (we'll use file command)
-is_likely_image() {
+# Function to check if a .mov file is likely a real movie
+# Uses MIME type detection - if it's video/*, it's likely a real movie
+is_likely_movie() {
     local file="$1"
-    local size=$(get_file_size "$file")
-    
-    # Skip if we can't get size
-    if [[ "$size" == "unknown" ]]; then
-        return 1
-    fi
-    
-    # Very small files are likely images (< 100KB)
-    if [[ $size -lt 102400 ]]; then
-        return 0
-    fi
-    
-    # Use file command to check MIME type first (more precise)
+   
+    # Use file command to check MIME type
     local mime_type=$(file --mime-type -b "$file" 2>/dev/null)
     
-    # Check MIME type - if it's not a video type, it's suspicious
-    if [[ -n "$mime_type" ]] && [[ ! "$mime_type" =~ ^video/ ]]; then
-        return 0
+    # Check MIME type - if it's a video type, it's likely a real movie
+    if [[ -n "$mime_type" ]] && [[ "$mime_type" =~ ^video/ ]]; then
+        return 0  # It's a video MIME type, so likely a real movie
     fi
     
-    # Use file command to check content type description
-    local file_type=$(file -b "$file" 2>/dev/null)
-    
-    # Look for signs it's not a real movie
-    if [[ "$file_type" =~ (JPEG|PNG|GIF|image|bitmap) ]]; then
-        return 0
-    fi
-    
-    # If file command says it's data or doesn't recognize it as video, and it's small-ish (< 1MB)
-    if [[ $size -lt 1048576 ]] && [[ "$file_type" =~ (data|ASCII|text) ]]; then
-        return 0
-    fi
-    
-    # Check for QuickTime files that might be images
-    if [[ "$file_type" =~ "QuickTime" ]] && [[ $size -lt 1048576 ]]; then
-        # Small QuickTime files might be single-frame "movies" (images)
-        return 0
-    fi
-    
-    return 1
+    return 1  # Not a video MIME type, so likely not a real movie
 }
 
 # Counters
@@ -118,10 +86,10 @@ total_mov_files=0
 
 # Find all .mov files
 while IFS= read -r -d '' mov_file; do
-    ((total_mov_files++))
+    total_mov_files=$((total_mov_files + 1))
     
-    if is_likely_image "$mov_file"; then
-        ((found_files++))
+    if ! is_likely_movie "$mov_file"; then
+        found_files=$((found_files + 1))
         
         # Get file info
         dir_name=$(dirname "$mov_file")
