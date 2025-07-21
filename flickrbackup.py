@@ -605,15 +605,16 @@ def main():
     # Create mutually exclusive group for operation mode
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument('-d', '--download', metavar='FILE',
-                           help='Attempt to download the photos with the ids in the given file, one per line (usually saved by the --error-file option)')
+                           help='Attempt to download the photos with the ids in the given file, one per line (usually saved by the --error-file option). Can be combined with --favorites to preserve favorites behavior.')
     mode_group.add_argument('--find-missing', metavar='FILE',
                            help='Search for metadata files without corresponding media files and write results to the specified CSV file')
     mode_group.add_argument('--obtain-web-session', metavar='FILE',
                            help='Launch a browser to obtain authenticated Flickr session data. Wait for manual login, then save session data to the specified file')
-    mode_group.add_argument('--favorites', action='store_true',
-                           help='Download favorites instead of own photos. Requires --from. Implies --store-once and does not organise photos into folders based on sets.')
     mode_group.add_argument('-f', '--from', dest='from_date',
                             help='Start date (YYYY-MM-DD) for backup. If not specified, uses the last backup date stored in .stamp file in the destination directory')
+
+    parser.add_argument('--favorites', action='store_true',
+                       help='Download favorites instead of own photos. Requires --from when used alone and no previous backup timestamp exists. When combined with --download, implies --store-once and does not organise photos into folders based on sets.')
 
     parser.add_argument('-o', '--store-once', action='store_true', help='Only store photos once, even if they appear in multiple sets')
     parser.add_argument('-k', '--keep-existing', action='store_true', help='Keep existing photos (default is to replace in case they have changed)')
@@ -637,6 +638,13 @@ def main():
         parser.error("destination is required except when using --obtain-web-session")
 
     destination = arguments.destination or ""
+    
+    # Validate that --from or .stamp file is required for modes other than --download
+    if not arguments.download and not arguments.from_date and destination:
+        stamp_path = Path(destination) / STAMP_FILENAME
+        if not stamp_path.exists():
+            parser.error("--from is required when no previous backup timestamp is found")
+    
     success = False
     web_session_data = None
 
@@ -694,8 +702,9 @@ def main():
             ids = [id.strip() for id in f.readlines() if id.strip() and not id.strip().startswith('#')]
 
         backup = FlickrBackup(destination,
-                store_once=arguments.store_once,
+                store_once=True if arguments.favorites else arguments.store_once,  # favorites mode always uses store_once
                 keep_existing=arguments.keep_existing,
+                favorites=arguments.favorites,  # Pass favorites flag to maintain consistent behavior
                 retry=arguments.retry,
                 verbose=arguments.verbose,
                 token_cache=arguments.token_cache,

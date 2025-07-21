@@ -158,12 +158,20 @@ column of the CSV file to a text file and use it with the
     $ flickrbackup.py --download redownload_missing.txt --web-session session.json /path/to/photos
 
 In this example, we have also used the ``--web-session`` option to make it more
-likely to work (see above).
+likely to work (see above). There is no particular reason you can't pass
+`--web-session` to the script every time you run it, though it might be difficult to
+detect if and when the session is no longer valid. The return of unexpected 404 errors
+might be a good indication. In this case, authenticate again as above and replace the
+session file.
 
-There is no particular reason you can't pass `--web-session` to the script every
-time you run it, though it might be difficult to detect if and when the session
-is no longer valid. The return of unexpected 404 errors might be a good indication.
-In this case, authenticate again as above and replace the session file.
+If you are using the ``--favorites`` mode and have failed downloads
+(saved via ``--error-file``), you can retry them while preserving the favorites behavior
+by combining ``--download`` and ``--favorites``::
+
+    $ flickrbackup.py --download errors.txt --favorites /path/to/photos
+
+This ensures that retried downloads behave consistently with the original favorites
+backup (no set directories, store-once behavior).
 
 Known limitations
 -----------------
@@ -184,6 +192,13 @@ including an empty directory, which will again force re-authentication.
 
 Changelog
 ---------
+
+Version 0.12.4, released 2025-07-20
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Added support for combining ``--favorites`` and ``--download`` options to ensure consistent
+  behavior when retrying failed favorites downloads. When both flags are used together,
+  the download mode will behave like favorites mode (no set directories, store-once behavior).
 
 Version 0.12.3, released 2025-07-17
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
