@@ -1,9 +1,10 @@
 #!/bin/bash
 
 # Script to find .mov files that likely contain images instead of actual movies
-# Usage: ./find_image_movies.sh [directory] [output_file]
+# Usage: ./find_image_movies.sh [--verbose] [directory] [output_file]
 # If no directory specified, uses current directory
 # If output_file specified, writes photo IDs (filename without extension) to file
+# --verbose: Show all .mov files as they are processed
 
 set -e  # Exit on any error
 
@@ -16,8 +17,29 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Parse command line arguments
-SEARCH_DIR="${1:-.}"
-OUTPUT_FILE="$2"
+VERBOSE=false
+SEARCH_DIR=""
+OUTPUT_FILE=""
+
+for arg in "$@"; do
+    case $arg in
+        --verbose)
+            VERBOSE=true
+            shift
+            ;;
+        *)
+            if [[ -z "$SEARCH_DIR" ]]; then
+                SEARCH_DIR="$arg"
+            elif [[ -z "$OUTPUT_FILE" ]]; then
+                OUTPUT_FILE="$arg"
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Set default directory if not specified
+SEARCH_DIR="${SEARCH_DIR:-.}"
 
 # Validate directory exists
 if [[ ! -d "$SEARCH_DIR" ]]; then
@@ -54,14 +76,20 @@ get_file_size() {
 format_file_size() {
     local size=$1
     if [[ "$size" == "unknown" ]]; then
-        echo "unknown size"
+        echo "unknown"
     elif [[ $size -lt 1024 ]]; then
-        echo "${size} bytes"
+        echo "${size}B"
     elif [[ $size -lt 1048576 ]]; then
-        echo "$(( size / 1024 )) KB"
+        echo "$(( size / 1024 ))KB"
     else
-        echo "$(( size / 1048576 )) MB"
+        echo "$(( size / 1048576 ))MB"
     fi
+}
+
+# Function to format MIME type for display (short version)
+format_mime_type() {
+    local mime_type="$1"
+    echo "$mime_type"
 }
 
 # Function to check if a .mov file is likely a real movie
@@ -84,29 +112,32 @@ is_likely_movie() {
 found_files=0
 total_mov_files=0
 
+echo -e "${BLUE}Scanning for .mov files...${NC}"
+if [[ "$VERBOSE" == true ]]; then
+    echo -e "${BLUE}Showing all .mov files found:${NC}"
+else
+    echo -e "${BLUE}Showing only suspected non-video files:${NC}"
+fi
+echo
+
 # Find all .mov files
 while IFS= read -r -d '' mov_file; do
     total_mov_files=$((total_mov_files + 1))
     
-    if ! is_likely_movie "$mov_file"; then
+    file_name=$(basename "$mov_file")
+    file_size=$(get_file_size "$mov_file")
+    mime_type=$(file --mime-type -b "$mov_file" 2>/dev/null || echo "unknown")
+    formatted_size=$(format_file_size "$file_size")
+    
+    if is_likely_movie "$mov_file"; then
+        # It's a real movie
+        if [[ "$VERBOSE" == true ]]; then
+            echo -e "${GREEN}${mov_file}${NC} | ${mime_type} | ${formatted_size}"
+        fi
+    else
+        # Suspected non-video file
         found_files=$((found_files + 1))
-        
-        # Get file info
-        dir_name=$(dirname "$mov_file")
-        file_name=$(basename "$mov_file")
-        file_size=$(get_file_size "$mov_file")
-        
-        # Print file info
-        echo -e "${YELLOW}Directory:${NC} $dir_name"
-        echo -e "${CYAN}File:${NC} $file_name"
-        echo -e "${GREEN}Size:${NC} $(format_file_size "$file_size")"
-        
-        # Get file type and MIME type for additional info
-        mime_type=$(file --mime-type -b "$mov_file" 2>/dev/null || echo "unknown")
-        file_type=$(file -b "$mov_file" 2>/dev/null || echo "unknown")
-        echo -e "${BLUE}MIME Type:${NC} $mime_type"
-        echo -e "${BLUE}File Type:${NC} $file_type"
-        echo
+        echo -e "${YELLOW}${mov_file}${NC} | ${mime_type} | ${formatted_size}"
         
         # Write photo ID to output file if specified
         if [[ -n "$OUTPUT_FILE" ]]; then
@@ -117,9 +148,10 @@ while IFS= read -r -d '' mov_file; do
     fi
 done < <(find "$SEARCH_DIR" -type f -name "*.mov" -print0)
 
+echo
 echo -e "${GREEN}Summary:${NC}"
 echo -e "  Total .mov files found: $total_mov_files"
-echo -e "  Likely image files: $found_files"
+echo -e "  Suspected non-video files: $found_files"
 
 if [[ $found_files -gt 0 ]]; then
     echo
