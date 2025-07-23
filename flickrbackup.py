@@ -284,11 +284,11 @@ class FlickrBackup(object):
 
         filepath = os.path.join(dirname, filename)
 
+        download_404 = False
         if self.keep_existing and os.path.exists(filepath):
             logger.debug('Image "%s" at %s already exists.', photo.title, filepath)
         else:
             tmp_fd, tmp_filename = tempfile.mkstemp()
-            download_404 = False
             try:
                 # Set up session with cookies if available
                 session = requests.Session()

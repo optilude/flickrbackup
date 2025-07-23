@@ -7,7 +7,7 @@ with open(os.path.join(here, 'README.rst'), encoding='utf-8') as f:
 
 setup(
     name="flickrbackup",
-    version="0.12.5",
+    version="0.12.6",
     packages=find_packages(),
     scripts=['flickrbackup.py'],
     install_requires=['flickrapi', 'threadpool', 'python-dateutil', 'requests'],
