@@ -193,6 +193,11 @@ including an empty directory, which will again force re-authentication.
 Changelog
 ---------
 
+Version 0.12.7, released YYYY-MM-DD
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+
 Version 0.12.6, released 2025-07-23
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
