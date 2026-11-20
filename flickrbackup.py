@@ -26,6 +26,8 @@ import configparser
 FLICKR_API_KEY = "39b564af2057a7d014875e4939a292db"
 FLICKR_API_SECRET = "32cb192e3b9c43e6"
 
+DEFAULT_CONFIG_PATH = os.path.join('~', '.flickr', 'flickrbackup.ini')
+
 METADATA_EXTENSION = 'txt'
 STAMP_FILENAME = '.stamp'
 
@@ -225,8 +227,10 @@ def obtain_web_session(output_file, browser='chrome', verbose=False):
 
 class FlickrBackup(object):
 
-    def __init__(self, destination, store_once=False, keep_existing=False, favorites=False, retry=1, verbose=False, token_cache=None, web_session=None, threaded=True, threadpoolsize=7):
+    def __init__(self, destination, store_once=False, keep_existing=False, favorites=False, retry=1, verbose=False, token_cache=None, web_session=None, threaded=True, threadpoolsize=7, api_key=FLICKR_API_KEY, api_secret=FLICKR_API_SECRET):
         self.destination = destination
+        self.api_key = api_key
+        self.api_secret = api_secret
         self.store_once = store_once
         self.keep_existing = keep_existing
         self.favorites = favorites
@@ -484,7 +488,7 @@ class FlickrBackup(object):
     # Helpers
 
     def retrieve_flickr_token(self):
-        flickr_api = flickrapi.FlickrAPI(FLICKR_API_KEY, FLICKR_API_SECRET, token_cache_location=self.token_cache)
+        flickr_api = flickrapi.FlickrAPI(self.api_key, self.api_secret, token_cache_location=self.token_cache)
 
         # Make sure the token is still valid if we have one
         if flickr_api.token_cache.token:
@@ -610,6 +614,36 @@ class FlickrBackup(object):
 # CLI
 #
 
+def load_api_credentials(config_path=None):
+    """Resolve the Flickr API key and secret.
+
+    Precedence: environment variables (FLICKR_API_KEY / FLICKR_API_SECRET),
+    then the ``[flickr]`` section of the config file, then the built-in defaults.
+    Key and secret are always taken from the same source.
+    """
+    env_key = os.environ.get('FLICKR_API_KEY', '').strip()
+    env_secret = os.environ.get('FLICKR_API_SECRET', '').strip()
+    if env_key or env_secret:
+        if not (env_key and env_secret):
+            raise ValueError("Both FLICKR_API_KEY and FLICKR_API_SECRET environment variables must be set")
+        return env_key, env_secret, 'environment'
+
+    explicit = config_path is not None
+    path = os.path.expanduser(config_path or DEFAULT_CONFIG_PATH)
+    if os.path.exists(path):
+        config = configparser.ConfigParser()
+        config.read(path, encoding='utf-8')
+        key = config.get('flickr', 'api_key', fallback='').strip()
+        secret = config.get('flickr', 'api_secret', fallback='').strip()
+        if key or secret:
+            if not (key and secret):
+                raise ValueError(f"Both api_key and api_secret must be set in the [flickr] section of {path}")
+            return key, secret, path
+    elif explicit:
+        raise ValueError(f"Config file {path} does not exist")
+
+    return FLICKR_API_KEY, FLICKR_API_SECRET, 'built-in defaults'
+
 def main():
     # Process command line arguments
     parser = argparse.ArgumentParser(description='Incremental Flickr backup')
@@ -637,6 +671,7 @@ def main():
     parser.add_argument('-v', '--verbose', action='store_true', help='Log progress information')
     
     parser.add_argument('--token-cache', dest='token_cache', help="Path to a directory where the login token data will be stored. Must be secure. Defaults to ~/.flickr")
+    parser.add_argument('--config', help=f"Path to a config file with a [flickr] section containing api_key and api_secret. Defaults to {DEFAULT_CONFIG_PATH}. The FLICKR_API_KEY and FLICKR_API_SECRET environment variables take precedence.")
     parser.add_argument('--web-session', help='Path to a session file created by --obtain-web-session to enable authenticated downloads')
     parser.add_argument('--single-threaded', action='store_false', dest='threaded', help='Run in single-threaded mode (for debugging purposes)')
     parser.add_argument('--browser', choices=['chrome', 'firefox'], default='chrome', help='Browser to use for web session capture (default: chrome)')
@@ -695,6 +730,13 @@ def main():
     for handler in handlers:
         logger.addHandler(handler)
 
+    try:
+        api_key, api_secret, api_source = load_api_credentials(arguments.config)
+    except (ValueError, configparser.Error) as e:
+        logger.error(f"Could not load Flickr API credentials: {e}")
+        sys.exit(1)
+    logger.debug(f"Using Flickr API credentials from {api_source}")
+
     # Run
     if arguments.obtain_web_session:
         logger.info("Launching browser to obtain Flickr session data...")
@@ -721,7 +763,9 @@ def main():
                 verbose=arguments.verbose,
                 token_cache=arguments.token_cache,
                 web_session=web_session_data,
-                threaded=arguments.threaded
+                threaded=arguments.threaded,
+                api_key=api_key,
+                api_secret=api_secret,
             )
         success = backup.download(ids, arguments.error_file)
     else:
@@ -749,6 +793,8 @@ def main():
                 token_cache=arguments.token_cache,
                 web_session=web_session_data,
                 threaded=arguments.threaded,
+                api_key=api_key,
+                api_secret=api_secret,
             )
 
         today = datetime.date.today().isoformat() # do this before running the backup in case it spans more than one day!

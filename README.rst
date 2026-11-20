@@ -190,12 +190,39 @@ you need to, you can delete this file to force re-authorization. You can also
 use the ``--token-cache`` option to specify a different location for this database,
 including an empty directory, which will again force re-authentication.
 
+Using your own Flickr API key
+-----------------------------
+
+By default, flickrbackup uses a built-in Flickr API key. To use your own, either:
+
+* create a config file at ``~/.flickr/flickrbackup.ini`` (or pass another path
+  with ``--config``)::
+
+    [flickr]
+    api_key = your-api-key
+    api_secret = your-api-secret
+
+  and make it readable only by you (``chmod 600 ~/.flickr/flickrbackup.ini``), or
+
+* set the ``FLICKR_API_KEY`` and ``FLICKR_API_SECRET`` environment variables.
+
+Environment variables take precedence over the config file. The config file is
+recommended for scheduled jobs (e.g. cron with ``su -c``), because cron runs
+with a minimal environment and the secret stays out of the crontab and process
+list. ``~`` is resolved against the home directory of the user running the script.
+
+Note that OAuth tokens are tied to the API key, so after changing the key you may
+need to re-authorize (see above).
+
 Changelog
 ---------
 
 Version 0.12.7, released YYYY-MM-DD
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+* Allow the Flickr API key and secret to be set via a config file
+  (``~/.flickr/flickrbackup.ini`` or ``--config``) or the ``FLICKR_API_KEY`` /
+  ``FLICKR_API_SECRET`` environment variables
 
 
 Version 0.12.6, released 2025-07-23
