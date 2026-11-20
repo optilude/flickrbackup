@@ -3,6 +3,10 @@ Flickr Incremental Backup
 
 A tool to incrementally backup your photos from `Flickr <http://flickr.com>`_.
 
+NOTE: Due to possible abuse, the default API key may not work. You are encouraged
+to create your own private API key in Flickr settings and use it as described
+below.
+
 Installation
 -------------
 
@@ -217,7 +221,7 @@ need to re-authorize (see above).
 Changelog
 ---------
 
-Version 0.12.7, released YYYY-MM-DD
+Version 0.12.7, released 2026-11-20
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 * Allow the Flickr API key and secret to be set via a config file
